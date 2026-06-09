@@ -22,7 +22,8 @@ Goal: a repo where it is impossible to merge broken, untyped, unformatted, or ev
 - [x] `make ci` passes end to end: lint → typecheck → test → audit → eval-gate
 
 ### In Progress
-- [ ] Set up `pre-commit` hooks (`.pre-commit-config.yaml`)
+- [x] Set up `pre-commit` hooks (`.pre-commit-config.yaml`)
+- [x] Committed and pushed Phase 0 to main
 - [ ] Set up GitHub Actions CI (`.github/workflows/ci.yml`)
 - [ ] Break it: open a PR with a type error — watch CI go red
 
