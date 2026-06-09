@@ -1,0 +1,116 @@
+# Build Steps
+
+Granular record of every step taken while building the project.
+Use this to reproduce the build from scratch or hand off to another engineer.
+
+---
+
+## Phase 0 — Engineering Foundations
+
+### Environment Setup
+1. Install uv: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+2. Add to PATH: `export PATH="$HOME/.local/bin:$PATH"`
+3. Deactivate conda (conflicts with uv venv): `conda deactivate`
+
+### Project Initialisation
+4. `uv init --name rag-engine --python 3.12`
+5. Delete scaffold: `rm main.py`
+6. Update description in `pyproject.toml`
+7. Add `[build-system]` + hatchling config to `pyproject.toml`
+8. Add `[dependency-groups] dev` with ruff, mypy, pytest, pip-audit, pre-commit
+9. Add `[tool.ruff]`, `[tool.mypy]`, `[tool.pytest.ini_options]` config blocks to `pyproject.toml`
+10. Add `pythonpath = ["src"]` to `[tool.pytest.ini_options]` (fixes editable install issue with Python 3.12 homebrew)
+
+### Directory Structure
+11. `mkdir -p src/rag_engine eval/results tests infra docs/adr`
+12. `touch src/rag_engine/__init__.py`
+
+### Dependencies
+13. `uv sync` → generates `uv.lock`, installs all packages
+
+### Source Files
+14. Create `src/rag_engine/config.py` — pydantic-settings, env prefix `RAG_`, 12-factor config
+    → all config comes from env vars; `RAG_LOG_LEVEL=DEBUG` overrides the default
+15. Create `src/rag_engine/log.py` — structlog, JSON output, request_id via ContextVar
+    → `bind_request_id()` at request entry; every log line after carries it automatically
+
+### Eval Gate
+16. Create `eval/gate.py` — fails if `eval/results/latest.json` missing or lacks sentinel key
+    → `sys.exit(1)` signals failure to make and CI; real metrics replace sentinel in Phase 2
+17. Create `eval/results/latest.json` with `{"sentinel": true}`
+
+### Tests
+18. Create `tests/test_smoke.py` — smoke tests for config defaults and request_id UUID format
+    → smoke test = "turn it on and see if it smokes"; proves package imports without crashing
+
+### Makefile
+19. Create `Makefile` with targets: `lint`, `typecheck`, `test`, `audit`, `eval-gate`, `ci`
+    → `make ci` runs identical pipeline locally and in GitHub Actions
+20. Verify each target: `make lint`, `make typecheck`, `make test`, `make audit`, `make eval-gate`
+21. `make ci` → full pipeline green
+
+### pre-commit
+22. Create `.pre-commit-config.yaml` — ruff, ruff-format, mypy (local), pre-commit-hooks
+23. `uv run pre-commit install` → hooks wired at `.git/hooks/pre-commit`
+24. Test: add deliberate formatting violation → `git commit` → pre-commit blocks it
+25. `uv run ruff format .` → auto-fix formatting
+
+### Git & CI
+26. Create `.gitignore` — excludes `__pycache__/`, `.venv/`, `.env`, `.DS_Store`, `.vscode/`
+27. Create `.github/workflows/ci.yml` — checkout → install uv → uv sync → lint → typecheck → test → audit → eval-gate
+28. Commit and push to main
+29. Verify GitHub Actions → all steps green in ~15s
+30. Break it: `git commit --no-verify -m "test: deliberate type error"` → CI catches it, blocks PR
+
+---
+
+## Phase 1 — Corpus Ingestion and Embedding Pipeline
+
+### Schema
+31. `git checkout -b phase/1-ingestion`
+32. `mkdir -p src/rag_engine/ingest && touch src/rag_engine/ingest/__init__.py`
+33. Create `src/rag_engine/ingest/schema.py`:
+    - `documents` table: `(article_id, chunk_index)` primary key, chunk-aware design
+    - Columns: `title`, `categories`, `timestamp`, `chunk_text`, `chunk_count`, `vector_offset`, `status`, `embedded_at`, `checksum`
+    - `PRAGMA journal_mode=WAL` — allows concurrent reads during writes
+    - `CREATE INDEX ON documents(status)` — fast lookup of pending/failed chunks on restart
+    → see `src/rag_engine/ingest/schema.py`; key concept: `IF NOT EXISTS` makes init_db idempotent
+34. Create `tests/test_schema.py` — tests table creation and idempotency (`IF NOT EXISTS`)
+    → see `tests/test_schema.py`
+35. `uv run ruff check --fix . && uv run ruff format .` → fix import ordering
+36. `make ci` → full pipeline green
+
+### Downloader
+37. `uv add httpx` → adds httpx to `pyproject.toml` + updates `uv.lock`
+38. Create `src/rag_engine/ingest/downloader.py`:
+    - streams download in 1 MB chunks — never loads full 4 GB into RAM
+    - writes to `.tmp` first, renames on success — prevents corrupt partial files on crash
+    - skips download if destination already exists — idempotent
+    → see `src/rag_engine/ingest/downloader.py`
+39. Create `tests/test_downloader.py`:
+    - `test_skips_if_exists` — proves idempotency
+    - `test_writes_to_tmp_then_renames` — patches `httpx.Client` to avoid real HTTP calls
+    → `unittest.mock.patch` replaces httpx.Client with a fake; tests stay fast and offline
+40. `make test` → 6 tests passed
+
+### Parser
+41. Create `src/rag_engine/ingest/parser.py`:
+    - `WikiArticle` dataclass: article_id, title, text, categories, timestamp
+    - `parse_snapshot(path)` → `Iterator[WikiArticle]` — generator, one article at a time
+    - skips malformed lines silently — real data is dirty
+    → see `src/rag_engine/ingest/parser.py`; key concept: yield keeps memory flat across 6M+ articles
+42. `make typecheck` → 7 source files clean
+
+### Parser Tests
+43. `mkdir -p tests/fixtures`
+44. Create `tests/fixtures/sample_snapshot.jsonl` — 4 lines, 1 malformed
+    → fixture file keeps tests offline; no real snapshot needed
+45. Create `tests/test_parser.py` — 4 tests: count, non-empty fields, first paper values, malformed skip
+46. `make test` → 10 passed
+
+### Next Steps
+47. Write ingestion pipeline (`src/rag_engine/ingest/pipeline.py`) — parse → chunk → insert SQLite
+38. Write parser — extract article_id, title, text, categories, timestamp from Wikipedia JSONL
+39. Write ingestion pipeline — parse → chunk → insert into SQLite with status='pending'
+40. Write embedding worker — async, bounded queue, reads pending rows, writes vectors to binary file
+41. Write integration test — ingest 1,000 docs end-to-end, assert vector file shape and checksum

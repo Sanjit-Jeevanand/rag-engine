@@ -7,7 +7,7 @@ a star are the **exceptional differentiators** -- the ones that separate this fr
 repo. Never skip "break it," and always turn the failure into a regression or eval test.
 
 ## The three headline outcomes we are building toward (hard targets)
-- **Outcome 1 -- ANN retrieval benchmarked, profiled, and optimized:** 1M+ vectors, recall@10 >= 97%,
+- **Outcome 1 -- ANN retrieval benchmarked, profiled, and optimized:** 6M+ vectors, recall@10 >= 97%,
   P99 < 5 ms, >= 2,000 QPS, 3x QPS improvement with flamegraph story. --> *Phase 3 (FAISS index
   comparison) + Phase 4 (profile + optimize).*
 - **Outcome 2 -- Agentic multi-hop RAG on public benchmarks:** +15 EM on HotpotQA vs single-shot,
@@ -51,10 +51,10 @@ and where a failing eval score blocks a merge just like a failing test.*
 ---
 
 ## Phase 1 -- Corpus ingestion and embedding pipeline
-*Goal: turn raw text (arXiv abstracts) into vectors you can query -- and understand every step.*
+*Goal: turn raw Wikipedia text into vectors you can query -- and understand every step.*
 
-1. Download and parse arXiv metadata (public S3 snapshot or the arXiv API); target >= 1M documents.
-   Store raw text and metadata in SQLite (title, abstract, arxiv_id, categories, date).
+1. Download and parse the Wikipedia dump (Wikimedia CirrusSearch JSONL); target 6M+ articles.
+   Store raw text and metadata in SQLite (title, text, article_id, categories, timestamp).
 2. Batch embedding with `sentence-transformers` (`bge-large-en-v1.5`, 1024-dim); async worker with
    a bounded queue; write vectors to a flat binary file (numpy mmap, `float32`).
 3. Track ingestion progress in the DB (status, embedding timestamp, checksum); resumable on crash
@@ -67,7 +67,7 @@ and where a failing eval score blocks a merge just like a failing test.*
 - **Learn:** corpus ingestion patterns, batched async I/O, mmap for large vector files,
   idempotent pipelines, why sentence-transformers and what `bge-large` does differently from OpenAI
   embeddings.
-- **Bullet:** "Ingested and embedded a 1M+ document arXiv corpus via an idempotent async pipeline,
+- **Bullet:** "Ingested and embedded a 6M+ article Wikipedia corpus via an idempotent async pipeline,
   storing 1024-dim float32 vectors in a memory-mapped flat file."
 
 ---
@@ -114,11 +114,11 @@ before optimizing.*
 6. **Break it:** set `ef=2` (HNSW) -- watch recall collapse below 50%. Set `nprobe=1` (IVF) --
    same. Capture as parameterized regression tests pinning minimum parameters.
 
-- **Target (Outcome 1):** a working, tested FAISS index over 1M vectors. Profiling and optimization
+- **Target (Outcome 1):** a working, tested FAISS index over 6M vectors. Profiling and optimization
   happen in Phase 4.
 - **Learn:** FAISS index hierarchy, IndexFlatL2 vs IndexHNSWFlat vs IndexIVFPQ, recall-latency
   Pareto curve, ef and nprobe as the recall-speed knobs, product quantization trade-offs.
-- **Bullet:** "Benchmarked FAISS IndexFlatL2, IndexHNSWFlat, and IndexIVFPQ over 1M+ arXiv vectors;
+- **Bullet:** "Benchmarked FAISS IndexFlatL2, IndexHNSWFlat, and IndexIVFPQ over 6M+ Wikipedia vectors;
   plotted the recall-latency Pareto curve; property-tested recall@10 >= 95% vs brute-force."
 
 ---

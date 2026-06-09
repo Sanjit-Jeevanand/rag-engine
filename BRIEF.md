@@ -20,7 +20,7 @@ Client --> FastAPI (streaming, authenticated) --> Agentic RAG pipeline
             neighbor pruning)                                                   answer verification
                     |                                   |                        + grounded citations)
            Flat binary store                  Hybrid BM25 + dense                       |
-           (1M+ vectors, mmap)               (RRF fusion)                       LLM call (Claude API)
+           (6M+ vectors, mmap)               (RRF fusion)                       LLM call (Claude API)
                     |                                                                    |
          Embedding service                                              Abstention on low-evidence
          (batched, async, cached)                                       queries
@@ -82,7 +82,7 @@ Nothing is "done" until it clears all of these.
 These three bullets are the definition of done for the whole project.
 
 1. **ANN retrieval: benchmarked, profiled, and optimized (the optimization story).** Benchmarked
-   FAISS `IndexHNSWFlat` and `IndexIVFPQ` against exact brute-force over a **1M+ vector** arXiv
+   FAISS `IndexHNSWFlat` and `IndexIVFPQ` against exact brute-force over a **6M+ vector** Wikipedia
    corpus; profiled under load with `py-spy` to find the batching bottleneck via flamegraph;
    batched the search path for a **3x QPS improvement** -- reaching **97% recall@10 at P99 < 5 ms**
    at **2,000+ QPS**, with a CI perf regression budget. *(Stretch: swap in a hand-written HNSW
@@ -122,7 +122,7 @@ Production-grade is table stakes. These five choices separate this from every ot
 
 ## Non-functional requirements / SLOs
 - **Retrieval throughput:** serve **>= 2,000 QPS** (batched ANN queries) on a single node.
-- **Retrieval latency:** FAISS search **P99 < 5 ms** at 1M vectors (batched queries).
+- **Retrieval latency:** FAISS search **P99 < 5 ms** at 6M vectors (batched queries).
 - **Retrieval quality:** **recall@10 >= 97%** vs brute-force (`IndexFlatL2`) on the same corpus.
 - **Optimization story:** before/after QPS multiplier **>= 3x** from flamegraph-identified fix.
 - **HotpotQA lift:** agentic pipeline **>= +10 EM points** over single-shot RAG baseline.
@@ -135,8 +135,8 @@ Production-grade is table stakes. These five choices separate this from every ot
 
 ## Tech constraints
 - **Language:** Python 3.12 (FastAPI for serving).
-- **Corpus:** arXiv abstracts + full papers (open, large, technically rich); optionally Wikipedia
-  for multilingual retrieval as a bonus differentiator.
+- **Corpus:** Wikipedia (6M+ English articles, clean text, HotpotQA-native); full corpus used for
+  all three headline outcomes — HNSW benchmark, multi-hop QA, and production eval.
 - **Vector index:** FAISS (`IndexHNSWFlat` primary; `IndexIVFPQ` comparison). Benchmarked,
   profiled, and tuned -- not just called. Stretch goal: replace with a hand-written HNSW index
   after Phase 10 if time allows.
