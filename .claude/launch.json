@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "RAG Guide",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "5500", "--directory", "/Users/sanjitjeevanand/Desktop/RAG"],
+      "port": 5500
+    }
+  ]
+}
