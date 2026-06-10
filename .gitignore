@@ -23,3 +23,5 @@ data/
 
 # macOS
 .DS_Store
+logs/embed.log
+*.log
