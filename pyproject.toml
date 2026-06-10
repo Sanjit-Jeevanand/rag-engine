@@ -5,13 +5,15 @@ description = "Production-grade RAG system: FAISS indexing, agentic multi-hop re
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "datasets>=5.0.0",
+    "faiss-cpu>=1.14.2",
     "httpx>=0.28.1",
-    "optimum[onnxruntime]>=2.1.0",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.3",
     "sentence-transformers>=5.5.1",
     "structlog>=24.1",
     "tqdm>=4.68.2",
+    "transformers>=5.0.0rc3",
 ]
 
 [dependency-groups]

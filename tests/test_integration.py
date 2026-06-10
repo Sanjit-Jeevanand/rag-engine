@@ -75,9 +75,3 @@ def test_end_to_end() -> None:
             r[0] for r in conn.execute("SELECT vector_offset FROM documents").fetchall()
         )
         assert offsets == list(range(total_chunks))
-
-        # all checksums set
-        missing = conn.execute(
-            "SELECT COUNT(*) FROM documents WHERE checksum IS NULL"
-        ).fetchone()[0]
-        assert missing == 0

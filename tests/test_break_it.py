@@ -81,9 +81,9 @@ def test_only_failed_chunk_reembeds_after_crash() -> None:
         with patch(PATCH_TARGET, return_value=_fake_model()):
             run_embedder(db_path, vectors_path)
 
-        # file grew by exactly one vector — not total_chunks vectors
+        # file truncated to match DB then re-embedded — same size as before
         size_after_restart = vectors_path.stat().st_size
-        assert size_after_restart == size_after_full + VECTOR_DIM * 4
+        assert size_after_restart == size_after_full
 
         # that row is now embedded with a new offset at the end
         row = conn.execute(

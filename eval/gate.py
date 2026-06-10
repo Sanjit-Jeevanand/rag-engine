@@ -2,8 +2,9 @@ import json
 import pathlib
 import sys
 
+from eval.comparator import compare
+
 RESULTS = pathlib.Path("eval/results/latest.json")
-SENTINEL_KEY = "sentinel"
 
 
 def main() -> None:
@@ -13,11 +14,11 @@ def main() -> None:
 
     data: dict[str, object] = json.loads(RESULTS.read_text())
 
-    if SENTINEL_KEY not in data:
-        print(f"FAIL: {SENTINEL_KEY!r} key missing from {RESULTS}", file=sys.stderr)
+    if "ndcg_at_10" not in data:
+        print(f"FAIL: no eval metrics in {RESULTS}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"OK: eval gate passed (sentinel={data[SENTINEL_KEY]!r})")
+    compare()
 
 
 if __name__ == "__main__":

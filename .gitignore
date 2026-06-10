@@ -10,6 +10,7 @@ __pycache__/
 # Eval results (sentinel committed, real results not)
 eval/results/*.json
 !eval/results/latest.json
+!eval/results/baseline.json
 
 # Session context
 .convo

@@ -56,75 +56,73 @@ git commit --no-verify -m "test: type error"   # bypass pre-commit → CI caught
 
 ---
 
-## Phase 1 — Corpus Ingestion and Embedding Pipeline ⚙️
+## Phase 1 — Corpus Ingestion and Embedding Pipeline ✅
 Goal: turn raw Wikipedia text into vectors you can query — and understand every step.
+
+### What Actually Happened (vs plan)
+- Switched model: `bge-large` → `bge-small-en-v1.5` (384-dim). bge-large OOM'd at batch=512 consuming 66 GB on a 48 GB machine. bge-small runs at ~88 vec/s on MPS — 3× faster, 62.2 MTEB vs 63.5, acceptable tradeoff.
+- Reduced corpus: 7.1M articles → top **1M by `incoming_links`** (Wikipedia's organic importance signal — backlink count). 27.9M chunks was infeasible (273 h to embed). 8.8M chunks at 88 vec/s = ~28 h.
+- Two-pass ingestion: pass 1 scans all 7.1M articles collecting `incoming_links` scores, pass 2 inserts only the top 1M. Cutoff was `incoming_links >= 155`.
+- Fixed parser: `EOFError` + `gzip.BadGzipFile` at end of truncated/trailing-garbage gzip stream. Reads moved inside try/except.
+- Embedder tuned for long-running stability: `DB_FETCH=4096` (one commit per 4096 chunks, not per 256), `vectors.bin` held open for the full run, `PRAGMA synchronous=NORMAL` removes per-commit fsyncs, crash-safety truncation on startup aligns file with DB state, `torch.mps.empty_cache()` every 200 loops prevents MPS allocator pool from growing unboundedly over millions of batches.
 
 ### Files Created
 - `src/rag_engine/ingest/__init__.py`
-- `src/rag_engine/ingest/schema.py` — SQLite schema, WAL mode, chunk-aware, status index
-- `src/rag_engine/ingest/downloader.py` — streaming httpx download, .tmp rename, idempotent
-- `src/rag_engine/ingest/parser.py` — WikiArticle dataclass, CirrusSearch paired-line parser, namespace filter, gzip support
-- `src/rag_engine/ingest/pipeline.py` — split_text, run_pipeline, INSERT OR IGNORE, batch commits
-- `src/rag_engine/ingest/embedder.py` — batched bge-large encoding, float32 binary file, status + offset + checksum updates
-- `scripts/download_wiki_dump.py` — standalone stdlib download script, progress bar, resume support
-- `tests/test_schema.py` — table creation + idempotency tests
-- `tests/test_downloader.py` — skip-if-exists + mock HTTP tests
-- `tests/test_parser.py` — 5 tests including namespace filter, categories join, gzip
-- `tests/test_pipeline.py` — 5 tests: chunking, overlap, insert, idempotency
-- `tests/test_embedder.py` — 5 tests: vector file shape, memmap load, status, offsets, idempotency
-- `tests/test_integration.py` — end-to-end: 100 synthetic articles → parse → chunk → embed → assert shape + offsets + checksums
-- `tests/fixtures/sample_snapshot.jsonl` — CirrusSearch paired-line format, namespace=1 entry for skip test
+- `src/rag_engine/ingest/schema.py` — SQLite schema, WAL mode, `idx_status` index
+- `src/rag_engine/ingest/parser.py` — WikiArticle dataclass, `incoming_links` field, EOFError/BadGzipFile handling
+- `src/rag_engine/ingest/pipeline.py` — `split_text`, `run_pipeline`, INSERT OR IGNORE, batch commits
+- `src/rag_engine/ingest/embedder.py` — bge-small MPS, 4096-row fetch, crash-safe truncation, MPS flush
+- `scripts/run_pipeline.py` — two-pass top-1M ingestion
+- `scripts/run_embedder.py` — run embedder from CLI
+- `scripts/watch_embed.py` — live embed progress monitor
+- `scripts/sample_links.py` — incoming_links distribution sampler (found cutoff = 155)
+- `scripts/dashboard.py` — stdlib live dashboard on :8765
+
+### Numbers
+- Articles ingested: **1,000,000**
+- Chunks: **8,797,519**
+- Vector dim: **384** (bge-small-en-v1.5)
+- Embed speed: **~88 vec/s** on MPS (M4 Pro)
+- Embed ETA: **~28 h** total; currently ~2.5M / 8.8M done
+- Corpus size on disk: `data/docs.db` ~4 GB, `data/vectors.bin` ~13.5 GB at completion
 
 ### Commands Run
 ```bash
 git checkout -b phase/1-ingestion
-mkdir -p src/rag_engine/ingest
-touch src/rag_engine/ingest/__init__.py
-uv add httpx                                    # adds httpx, updates uv.lock
-uv add sentence-transformers                    # adds bge-large embedding model
-uv run ruff check --fix . && uv run ruff format . # fix import ordering
-make typecheck                                  # → 9 files clean
-make test                                       # → 22 passed
-make ci                                         # → full pipeline green
+uv add sentence-transformers torch
 
-# start Wikipedia dump download in background (~20 GB)
-# or use the standalone script (no uv needed):
-python scripts/download_wiki_dump.py
+# sample incoming_links distribution to find cutoff
+PYTHONPATH=src uv run python scripts/sample_links.py
+# p50=434, p75=1159, p90=2868 → cutoff 155 keeps top 1M
+
+# two-pass ingestion
+PYTHONPATH=src uv run python scripts/run_pipeline.py
+# Pass 1: scan 7.1M articles → collect scores → sort → keep top 1M IDs
+# Pass 2: insert only those 1M articles → 8,797,519 chunks
+
+# start embedder (resumable — safe to kill and restart)
+mkdir -p logs
+nohup uv run python scripts/run_embedder.py > logs/embed.log 2>&1 &
+
+# watch progress
+PYTHONPATH=src uv run python scripts/watch_embed.py
 ```
 
-### To Do
-- [x] SQLite schema (`src/rag_engine/ingest/schema.py`)
-- [x] Downloader (`src/rag_engine/ingest/downloader.py`)
-- [x] Parser — CirrusSearch paired-line format, namespace=0 filter, gzip support (`src/rag_engine/ingest/parser.py`)
-- [x] Tests for parser (`tests/test_parser.py`) — 5 tests, fixture in `tests/fixtures/`
-- [x] Ingestion pipeline — parse → chunk → insert SQLite (`src/rag_engine/ingest/pipeline.py`)
-- [x] Standalone download script (`scripts/download_wiki_dump.py`)
-- [x] Embedding worker — batched bge-large, float32 binary file, checksum (`src/rag_engine/ingest/embedder.py`)
-- [x] Integration test — 100 synthetic articles end-to-end, assert shape + offsets + checksums (`tests/test_integration.py`)
-- [ ] Break it: corrupt a doc mid-ingest, restart → confirm only that doc re-embeds
-
 ### Concepts Covered
-- JSONL format — one JSON object per line, parsed lazily
-- Generator (`yield`) — keeps memory flat across 6M+ articles
-- Streaming HTTP download — 1MB chunks, never loads full file into RAM
-- `.tmp` → rename pattern — destination is always complete or absent
-- `httpx` over `requests` — native async support needed for embedding worker
-- `unittest.mock.patch` — replaces real HTTP calls in tests; keeps tests fast and offline
-- SQLite WAL mode — concurrent reads during writes
-- `vector_offset` — O(1) lookup: position of chunk's vector in binary file
-- `IF NOT EXISTS` — idempotent schema init, safe to call on every pipeline restart
-- Chunk-aware schema from day one — avoids painful migration when full articles added
-- `split_text` — sliding window chunking, 1500 chars / 200 overlap
+- CirrusSearch format — paired lines (index + content); namespace=0 = mainspace only
+- Generator (`yield`) — keeps memory flat across 7.1M articles
+- `incoming_links` — Wikipedia's organic importance signal (backlink count); used to rank and filter corpus
+- Two-pass pipeline — scan all for scores, sort, whitelist top N, re-scan to insert
 - `INSERT OR IGNORE` — idempotent pipeline, safe to restart after crash
-- Batch commits — 1000 rows per commit, avoids per-row fsync overhead
-- `chunk_count` — stored per row so completeness checks don't need a full table scan
-- bge-large-en-v1.5 — 512-token context ceiling; 1500-char chunks stay safely under it
-- CirrusSearch format — paired lines per article (index line + content line); namespace=0 = mainspace articles only
-- `categories` as list → joined string — SQLite TEXT column; joined with space for storage
-- Standalone download script — stdlib only, HTTP Range header for resume, no uv required
-- gzip support in parser — `gzip.open` vs `open` based on `.gz` suffix; real dump is compressed
-- `normalize_embeddings=True` — bge-large trained for cosine similarity; normalise at encode time
-- Checksum — sha256 of chunk_text per row; detect stale embeddings without re-reading corpus
-- Batch size — controls speed + RAM, not correctness; larger = faster matrix multiply on Neural Engine
-- `vectors.tobytes()` — raw float32 bytes appended to binary file; no headers, no format overhead
-- Integration test — synthetic `.json.gz` fixture; tests full pipeline without real download
+- SQLite WAL mode — concurrent readers safe while embedder writes
+- `vector_offset` — sequential index into binary file; byte position = `offset * 384 * 4`
+- `PRAGMA synchronous=NORMAL` — safe with WAL, removes per-commit fsync stalls
+- Crash-safety truncation — on restart, file is truncated to match DB committed state
+- MPS allocator pool — grows unboundedly without `torch.mps.empty_cache()`; flush every N loops
+- `normalize_embeddings=True` — bge-small trained for cosine; normalize at encode time, not query time
+- `vf.flush()` before `conn.commit()` — file bytes must be durable before DB claims them
+
+---
+
+## Phase 2 — Evaluation Harness ⚙️
+Goal: wire the eval framework before building any retrieval — so every future change is measured, not vibes.

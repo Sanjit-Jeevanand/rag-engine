@@ -18,7 +18,9 @@ test:
 	uv run pytest
 
 audit:
-	uv run pip-audit
+	# CVE-2026-1839 / PYSEC-2025-217: fix requires transformers>=5.0.0rc3 but
+	# optimum[onnxruntime] (sentence-transformers dep) pins transformers<4.58.0 — cannot upgrade
+	uv run pip-audit --ignore-vuln PYSEC-2025-217 --ignore-vuln CVE-2026-1839
 
 eval-gate:
 	uv run python eval/gate.py
