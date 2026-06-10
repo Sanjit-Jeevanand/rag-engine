@@ -12,6 +12,7 @@ class WikiArticle:
     text: str
     categories: str
     timestamp: str
+    incoming_links: int = 0  # number of other Wikipedia articles linking here
 
 
 def parse_snapshot(path: Path) -> Iterator[WikiArticle]:
@@ -41,6 +42,7 @@ def parse_snapshot(path: Path) -> Iterator[WikiArticle]:
                     text=text,
                     categories=" ".join(content.get("categories") or []),
                     timestamp=content.get("timestamp", ""),
+                    incoming_links=int(content.get("incoming_links") or 0),
                 )
             except (KeyError, json.JSONDecodeError):
                 continue

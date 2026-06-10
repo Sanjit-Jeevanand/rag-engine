@@ -33,11 +33,16 @@ def _insert_batch(conn: sqlite3.Connection, batch: list[Row]) -> None:
     conn.commit()
 
 
-def run_pipeline(snapshot_path: Path, db_path: Path) -> None:
+def run_pipeline(
+    snapshot_path: Path,
+    db_path: Path,
+    max_articles: int | None = None,
+) -> None:
     conn = init_db(db_path)
     batch: list[Row] = []
-
-    for article in parse_snapshot(snapshot_path):
+    for article_count, article in enumerate(parse_snapshot(snapshot_path)):
+        if max_articles is not None and article_count >= max_articles:
+            break
         chunks = split_text(article.text)
         chunk_count = len(chunks)
         for i, text in enumerate(chunks):

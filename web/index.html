@@ -1,0 +1,598 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAG Engine — Wikipedia QA</title>
+<style>
+  :root {
+    --bg: #0a0c10;
+    --card: rgba(255,255,255,0.03);
+    --card-hover: rgba(255,255,255,0.05);
+    --border: rgba(255,255,255,0.08);
+    --text: #e7eaf0;
+    --muted: #8b93a7;
+    --accent1: #6366f1;
+    --accent2: #22d3ee;
+    --green: #34d399;
+    --amber: #fbbf24;
+    --red: #f87171;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    background-image: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99,102,241,0.14), transparent);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    min-height: 100vh;
+    padding: 0 24px 80px;
+  }
+  .wrap { max-width: 1060px; margin: 0 auto; }
+
+  /* ── header ─────────────────────────────────────────── */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 22px 0; flex-wrap: wrap; gap: 12px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand .dot {
+    width: 9px; height: 9px; border-radius: 50%; background: var(--green);
+    animation: pulse 1.8s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(52,211,153,0.45); }
+    50% { box-shadow: 0 0 0 7px rgba(52,211,153,0); }
+  }
+  .brand b { font-size: 15px; letter-spacing: 0.16em; font-weight: 700; }
+  .brand span { font-size: 13px; color: var(--muted); }
+  .badges { display: flex; gap: 8px; flex-wrap: wrap; }
+  .badge {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
+    padding: 5px 11px; border-radius: 999px;
+    border: 1px solid var(--border); color: var(--muted);
+    background: var(--card);
+  }
+  .badge.mock {
+    color: var(--amber); border-color: rgba(251,191,36,0.35);
+    background: rgba(251,191,36,0.08);
+  }
+
+  /* ── hero / search ──────────────────────────────────── */
+  .hero { text-align: center; padding: 56px 0 8px; }
+  .hero h1 {
+    font-size: 42px; font-weight: 750; letter-spacing: -0.03em; line-height: 1.15;
+  }
+  .hero h1 span {
+    background: linear-gradient(90deg, var(--accent1), var(--accent2));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .hero p { color: var(--muted); margin-top: 12px; font-size: 15px; }
+
+  .searchbox {
+    display: flex; gap: 10px; max-width: 720px; margin: 32px auto 0;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 16px; padding: 8px;
+    transition: border-color .25s, box-shadow .25s;
+  }
+  .searchbox:focus-within {
+    border-color: rgba(99,102,241,0.6);
+    box-shadow: 0 0 0 4px rgba(99,102,241,0.12);
+  }
+  .searchbox input {
+    flex: 1; background: none; border: none; outline: none;
+    color: var(--text); font-size: 16px; padding: 10px 14px;
+    font-family: inherit;
+  }
+  .searchbox input::placeholder { color: #5b6275; }
+  .searchbox button {
+    background: linear-gradient(90deg, var(--accent1), var(--accent2));
+    border: none; border-radius: 11px; color: #fff;
+    font-size: 14px; font-weight: 650; padding: 0 22px;
+    cursor: pointer; font-family: inherit;
+    transition: opacity .2s, transform .1s;
+  }
+  .searchbox button:hover { opacity: 0.9; }
+  .searchbox button:active { transform: scale(0.97); }
+  .searchbox button:disabled { opacity: 0.45; cursor: default; }
+
+  .examples {
+    display: flex; gap: 8px; justify-content: center;
+    flex-wrap: wrap; margin-top: 18px;
+  }
+  .chip {
+    font-size: 13px; color: var(--muted); cursor: pointer;
+    border: 1px solid var(--border); border-radius: 999px;
+    padding: 7px 14px; background: var(--card);
+    transition: color .2s, border-color .2s, background .2s;
+    font-family: inherit;
+  }
+  .chip:hover { color: var(--text); border-color: rgba(99,102,241,0.5); background: var(--card-hover); }
+  .chip .tag {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+    margin-left: 7px; padding: 2px 6px; border-radius: 5px;
+  }
+  .tag.hop { color: var(--accent2); background: rgba(34,211,238,0.1); }
+  .tag.abstain { color: var(--amber); background: rgba(251,191,36,0.1); }
+
+  /* ── results layout ─────────────────────────────────── */
+  #results { display: none; margin-top: 48px; }
+  #results.show { display: block; animation: rise .45s ease; }
+  @keyframes rise { from { opacity: 0; transform: translateY(14px); } }
+
+  .cols { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 860px) { .cols { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 16px; padding: 22px;
+  }
+  .card + .card { margin-top: 16px; }
+  .card-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .card-head .label {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.15em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .pill {
+    font-size: 11px; font-weight: 650; padding: 4px 11px; border-radius: 999px;
+  }
+  .pill.grounded { color: var(--green); background: rgba(52,211,153,0.1); border: 1px solid rgba(52,211,153,0.3); }
+  .pill.abstained { color: var(--amber); background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.3); }
+  .pill.working { color: var(--accent2); background: rgba(34,211,238,0.08); border: 1px solid rgba(34,211,238,0.25); }
+
+  /* ── answer ─────────────────────────────────────────── */
+  .answer { font-size: 15.5px; line-height: 1.75; min-height: 84px; }
+  .answer .cursor {
+    display: inline-block; width: 8px; height: 17px; margin-left: 2px;
+    background: var(--accent2); vertical-align: text-bottom;
+    animation: blink 0.9s steps(1) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+  .cite {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 19px; height: 19px; padding: 0 4px; margin: 0 2px;
+    border-radius: 6px; font-size: 11px; font-weight: 700;
+    color: var(--accent2); background: rgba(34,211,238,0.1);
+    border: 1px solid rgba(34,211,238,0.25);
+    cursor: pointer; vertical-align: 2px;
+    transition: background .2s, transform .15s;
+  }
+  .cite:hover { background: rgba(34,211,238,0.22); transform: translateY(-1px); }
+  .abstain-note {
+    border-left: 3px solid var(--amber); padding: 4px 0 4px 16px;
+    color: #d8c89a;
+  }
+
+  /* ── agent trace ────────────────────────────────────── */
+  .trace { list-style: none; }
+  .trace li {
+    display: flex; gap: 14px; padding: 9px 0;
+    font-size: 13.5px; opacity: 0; transform: translateY(6px);
+    transition: opacity .35s, transform .35s;
+  }
+  .trace li.on { opacity: 1; transform: none; }
+  .trace .icon {
+    width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; margin-top: 1px;
+    border: 1px solid var(--border); background: var(--card);
+  }
+  .trace li.done .icon { color: var(--green); border-color: rgba(52,211,153,0.4); }
+  .trace li.running .icon { border-color: rgba(34,211,238,0.5); }
+  .trace li.running .icon::after {
+    content: ""; width: 10px; height: 10px; border-radius: 50%;
+    border: 2px solid rgba(34,211,238,0.25); border-top-color: var(--accent2);
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .trace .step-label { flex: 1; color: var(--text); }
+  .trace .step-label small { display: block; color: var(--muted); margin-top: 2px; }
+  .trace .ms { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .trace li.reflect .step-label { color: var(--accent2); }
+
+  /* ── passages ───────────────────────────────────────── */
+  .passage {
+    border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px 16px; margin-bottom: 10px; background: rgba(255,255,255,0.015);
+    opacity: 0; transform: translateY(8px);
+    transition: opacity .4s, transform .4s, border-color .25s, box-shadow .25s;
+  }
+  .passage.on { opacity: 1; transform: none; }
+  .passage.glow {
+    border-color: rgba(34,211,238,0.55);
+    box-shadow: 0 0 0 3px rgba(34,211,238,0.1);
+  }
+  .passage .ptitle {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13.5px; font-weight: 650; margin-bottom: 6px;
+  }
+  .passage .pnum {
+    min-width: 18px; height: 18px; border-radius: 5px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 10.5px; font-weight: 700;
+    color: var(--accent2); background: rgba(34,211,238,0.1);
+    border: 1px solid rgba(34,211,238,0.25);
+  }
+  .passage .snippet {
+    font-size: 12.5px; color: var(--muted); line-height: 1.6;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .passage .scores {
+    display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;
+    font-size: 10.5px; font-variant-numeric: tabular-nums;
+  }
+  .score { color: var(--muted); }
+  .score b { color: var(--text); font-weight: 650; margin-left: 4px; }
+  .score.low b { color: var(--red); }
+  .skeleton {
+    border-radius: 12px; height: 92px; margin-bottom: 10px;
+    background: linear-gradient(100deg, rgba(255,255,255,0.03) 40%, rgba(255,255,255,0.07) 50%, rgba(255,255,255,0.03) 60%);
+    background-size: 200% 100%;
+    animation: sk 1.4s infinite;
+  }
+  @keyframes sk { to { background-position: -200% 0; } }
+
+  /* ── latency waterfall ──────────────────────────────── */
+  .waterfall { display: flex; height: 30px; border-radius: 9px; overflow: hidden; background: rgba(255,255,255,0.04); }
+  .seg {
+    height: 100%; width: 0%; transition: width .7s ease;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10.5px; font-weight: 650; color: rgba(255,255,255,0.92);
+    white-space: nowrap; overflow: hidden;
+  }
+  .seg.embed    { background: #6366f1; }
+  .seg.retrieve { background: #14b8a6; }
+  .seg.rerank   { background: #0ea5e9; }
+  .seg.generate { background: rgba(99,102,241,0.35); }
+  .wf-legend { display: flex; gap: 16px; margin-top: 12px; flex-wrap: wrap; font-size: 11.5px; color: var(--muted); }
+  .wf-legend i {
+    display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 6px;
+  }
+  .wf-total { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--text); font-weight: 650; }
+
+  footer {
+    margin-top: 56px; text-align: center; font-size: 12px; color: #5b6275; line-height: 1.8;
+  }
+  footer code { color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <span class="dot"></span>
+      <b>RAG&nbsp;ENGINE</b>
+      <span>Wikipedia · agentic retrieval</span>
+    </div>
+    <div class="badges">
+      <span class="badge">1M articles</span>
+      <span class="badge">bge-small · 384d</span>
+      <span class="badge">FAISS HNSW</span>
+      <span class="badge mock">MOCK MODE — no backend</span>
+    </div>
+  </header>
+
+  <section class="hero">
+    <h1>Ask Wikipedia <span>anything</span>.</h1>
+    <p>Hybrid retrieval · cross-encoder reranking · multi-hop reasoning · grounded citations</p>
+
+    <div class="searchbox">
+      <input id="q" type="text" placeholder="Ask anything about the world…  (⌘K)" autocomplete="off">
+      <button id="ask">Ask</button>
+    </div>
+
+    <div class="examples">
+      <button class="chip" data-q="Why is the sky blue?">Why is the sky blue?</button>
+      <button class="chip" data-q="What is the capital of the country where the Eiffel Tower is located?">
+        Capital of the Eiffel Tower's country<span class="tag hop">MULTI-HOP</span>
+      </button>
+      <button class="chip" data-q="Who won the 2031 FIFA World Cup?">
+        Who won the 2031 World Cup?<span class="tag abstain">ABSTAINS</span>
+      </button>
+    </div>
+  </section>
+
+  <section id="results">
+    <div class="cols">
+      <div>
+        <div class="card">
+          <div class="card-head">
+            <span class="label">Answer</span>
+            <span class="pill working" id="answer-pill">retrieving…</span>
+          </div>
+          <div class="answer" id="answer"><span class="cursor"></span></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><span class="label">Agent trace</span></div>
+          <ul class="trace" id="trace"></ul>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <span class="label">Latency budget</span>
+          </div>
+          <div class="waterfall">
+            <div class="seg embed" id="seg-embed"></div>
+            <div class="seg retrieve" id="seg-retrieve"></div>
+            <div class="seg rerank" id="seg-rerank"></div>
+            <div class="seg generate" id="seg-generate"></div>
+          </div>
+          <div class="wf-legend">
+            <span><i style="background:#6366f1"></i>embed</span>
+            <span><i style="background:#14b8a6"></i>retrieve</span>
+            <span><i style="background:#0ea5e9"></i>rerank</span>
+            <span><i style="background:rgba(99,102,241,0.35)"></i>generate</span>
+            <span class="wf-total" id="wf-total">—</span>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="card">
+          <div class="card-head">
+            <span class="label">Retrieved passages</span>
+            <span class="pill working" id="passage-count">top-k</span>
+          </div>
+          <div id="passages"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Every number, passage and answer on this page is a <b>placeholder</b>.<br>
+    Retrieval lands in Phase&nbsp;3 · reranking in Phase&nbsp;6 · the agentic loop in Phase&nbsp;7 ·
+    this UI gets wired to <code>FastAPI /query</code> in Phase&nbsp;9.
+  </footer>
+</div>
+
+<script>
+/* ───────────────────────── mock data ───────────────────────── */
+
+const DEMOS = {
+  "why is the sky blue?": {
+    mode: "grounded",
+    faith: 96,
+    passages: [
+      { t: "Rayleigh scattering", s: "Rayleigh scattering is the scattering of light by particles much smaller than the wavelength of the radiation. The intensity of scattered light varies inversely with the fourth power of the wavelength, so shorter (blue) wavelengths are scattered much more strongly than longer (red) ones…", d: 0.87, b: 14.2, r: 0.97 },
+      { t: "Diffuse sky radiation", s: "Diffuse sky radiation is solar radiation reaching the Earth's surface after having been scattered by molecules in the atmosphere. Of the visible wavelengths, blue light is scattered most efficiently, which is why the clear daytime sky appears blue when viewed away from the sun…", d: 0.84, b: 11.8, r: 0.94 },
+      { t: "Sunset", s: "During sunset, sunlight traverses a much longer path through the atmosphere. Most short-wavelength blue light is scattered out of the line of sight before reaching the observer, leaving the longer red and orange wavelengths to dominate the sky's appearance…", d: 0.79, b: 9.1, r: 0.88 },
+      { t: "Atmosphere of Earth", s: "The atmosphere of Earth is composed primarily of nitrogen (78%) and oxygen (21%). These molecules are far smaller than the wavelength of visible light, placing atmospheric scattering firmly in the Rayleigh regime…", d: 0.76, b: 8.7, r: 0.71 },
+    ],
+    answer: "The sky appears blue because of **Rayleigh scattering** — the scattering of sunlight by gas molecules in Earth's atmosphere [1]. The intensity of this scattering is proportional to 1/λ⁴, so shorter blue wavelengths (~450 nm) scatter far more strongly than longer red ones [1]. When you look at the daytime sky away from the sun, you are seeing this scattered blue light arriving from every direction [2]. At sunset the light's path through the atmosphere is much longer, so most of the blue has already been scattered away — which is why the horizon turns red and orange instead [3].",
+    trace: [
+      { l: "Embed query", sub: "bge-small-en-v1.5 · 384d", ms: 8 },
+      { l: "Retrieve top-20", sub: "hybrid: FAISS HNSW + BM25, RRF fusion", ms: 4 },
+      { l: "Rerank 20 → 4", sub: "cross-encoder bge-reranker", ms: 23 },
+      { l: "Verify evidence", sub: "max rerank score 0.97 ≥ threshold 0.55 ✓", ms: 1, reflect: true },
+      { l: "Generate answer", sub: "claude-sonnet · streaming, citations enforced", ms: 580 },
+    ],
+    lat: { embed: 8, retrieve: 4, rerank: 23, generate: 580 },
+  },
+
+  "what is the capital of the country where the eiffel tower is located?": {
+    mode: "grounded",
+    faith: 94,
+    passages: [
+      { t: "Eiffel Tower", s: "The Eiffel Tower is a wrought-iron lattice tower on the Champ de Mars in Paris, France. It is named after the engineer Gustave Eiffel, whose company designed and built the tower for the 1889 World's Fair…", d: 0.91, b: 16.8, r: 0.98, hop: 1 },
+      { t: "France", s: "France, officially the French Republic, is a country located primarily in Western Europe. Its capital and largest city is Paris, which is also the country's principal cultural and commercial centre…", d: 0.83, b: 12.4, r: 0.95, hop: 2 },
+      { t: "Paris", s: "Paris is the capital and largest city of France. With an official population of over two million residents, it has been one of Europe's major centres of finance, diplomacy, commerce, culture and science since the 17th century…", d: 0.81, b: 11.6, r: 0.93, hop: 2 },
+    ],
+    answer: "The Eiffel Tower stands on the Champ de Mars in **Paris, France** [1]. The capital of France is **Paris** [2][3] — so the capital of the country where the Eiffel Tower is located is **Paris**.",
+    trace: [
+      { l: "Embed query", sub: "bge-small-en-v1.5 · 384d", ms: 8 },
+      { l: "Hop 1 — retrieve top-20", sub: "best evidence: “Eiffel Tower” (rerank 0.98)", ms: 5 },
+      { l: "Reflect", sub: "tower is in France — but capital not yet evidenced → second hop", ms: 410, reflect: true },
+      { l: "Hop 2 — retrieve “capital of France”", sub: "rewritten sub-query · hybrid retrieval", ms: 5 },
+      { l: "Rerank 40 → 3", sub: "cross-encoder over both hops", ms: 31 },
+      { l: "Generate answer", sub: "claude-sonnet · citations from both hops", ms: 520 },
+    ],
+    lat: { embed: 8, retrieve: 10, rerank: 31, generate: 930 },
+  },
+
+  "who won the 2031 fifa world cup?": {
+    mode: "abstain",
+    passages: [
+      { t: "FIFA World Cup", s: "The FIFA World Cup is an international association football competition between the senior men's national teams of the members of FIFA. The tournament has been held every four years since the inaugural event in 1930…", d: 0.62, b: 10.3, r: 0.31, low: true },
+      { t: "2026 FIFA World Cup", s: "The 2026 FIFA World Cup will be jointly hosted by 16 cities in three North American countries: Canada, Mexico, and the United States. It will be the first World Cup to feature 48 teams…", d: 0.58, b: 9.7, r: 0.27, low: true },
+      { t: "List of FIFA World Cup finals", s: "The FIFA World Cup final is the last match of the competition. The most recent final listed in this corpus snapshot took place prior to the December 2025 dump date…", d: 0.55, b: 8.2, r: 0.22, low: true },
+    ],
+    answer: "ABSTAIN::I can't answer this from the corpus. The 2031 FIFA World Cup post-dates this Wikipedia snapshot (December 2025), and the best retrieved evidence scored **0.31** — below the abstention threshold of **0.55**. Rather than guess, the system declines to answer.",
+    trace: [
+      { l: "Embed query", sub: "bge-small-en-v1.5 · 384d", ms: 8 },
+      { l: "Retrieve top-20", sub: "hybrid: FAISS HNSW + BM25, RRF fusion", ms: 4 },
+      { l: "Rerank 20 → 3", sub: "cross-encoder bge-reranker", ms: 24 },
+      { l: "Verify evidence", sub: "max rerank score 0.31 < threshold 0.55 ✗ — abstaining", ms: 1, reflect: true },
+      { l: "Generate answer", sub: "skipped — abstention saves the LLM call entirely", ms: 0, skipped: true },
+    ],
+    lat: { embed: 8, retrieve: 4, rerank: 24, generate: 0 },
+  },
+};
+
+const GENERIC = {
+  mode: "placeholder",
+  passages: null, // skeletons
+  answer: "PLACEHOLDER::This is a **mock response** — there's no backend behind this page yet. Retrieval lands in Phase 3, reranking in Phase 6, and the agentic loop in Phase 7. Try one of the three example queries below the search bar to see the full simulated experience: grounded citations, multi-hop reasoning, and abstention.",
+  trace: [
+    { l: "Embed query", sub: "bge-small-en-v1.5 · 384d", ms: 8 },
+    { l: "Retrieve top-20", sub: "⚠ placeholder — FAISS index not built yet", ms: 4 },
+    { l: "Rerank 20 → 5", sub: "⚠ placeholder — reranker arrives in Phase 6", ms: 23 },
+    { l: "Generate answer", sub: "⚠ placeholder — generation arrives in Phase 7", ms: 450 },
+  ],
+  lat: { embed: 8, retrieve: 4, rerank: 23, generate: 450 },
+};
+
+/* ───────────────────────── helpers ───────────────────────── */
+
+const $ = id => document.getElementById(id);
+let running = false;
+const timers = [];
+const later = (fn, ms) => timers.push(setTimeout(fn, ms));
+
+function resetRun() {
+  timers.forEach(clearTimeout);
+  timers.length = 0;
+  $("trace").innerHTML = "";
+  $("passages").innerHTML = "";
+  $("answer").innerHTML = '<span class="cursor"></span>';
+  $("answer-pill").className = "pill working";
+  $("answer-pill").textContent = "retrieving…";
+  $("passage-count").textContent = "top-k";
+  ["embed","retrieve","rerank","generate"].forEach(k => {
+    const el = $("seg-" + k);
+    el.style.width = "0%"; el.textContent = "";
+  });
+  $("wf-total").textContent = "—";
+}
+
+/* markdown-lite: **bold** and [n] citations */
+function renderAnswer(text) {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
+    .replace(/\[(\d+)\]/g, '<sup class="cite" data-ref="$1">$1</sup>');
+}
+
+function streamAnswer(raw, mode, faith) {
+  let body = raw, abstain = false, placeholder = false;
+  if (raw.startsWith("ABSTAIN::")) { body = raw.slice(9); abstain = true; }
+  if (raw.startsWith("PLACEHOLDER::")) { body = raw.slice(13); placeholder = true; }
+
+  const words = body.split(" ");
+  let i = 0;
+  const el = $("answer");
+
+  function step() {
+    i++;
+    const partial = words.slice(0, i).join(" ");
+    const html = renderAnswer(partial) + '<span class="cursor"></span>';
+    el.innerHTML = abstain ? '<div class="abstain-note">' + html + "</div>" : html;
+    if (i < words.length) {
+      later(step, 24 + Math.random() * 30);
+    } else {
+      el.innerHTML = abstain
+        ? '<div class="abstain-note">' + renderAnswer(body) + "</div>"
+        : renderAnswer(body);
+      const pill = $("answer-pill");
+      if (abstain) { pill.className = "pill abstained"; pill.textContent = "abstained — low evidence"; }
+      else if (placeholder) { pill.className = "pill abstained"; pill.textContent = "placeholder"; }
+      else { pill.className = "pill grounded"; pill.textContent = "grounded · " + faith + "% faithful"; }
+      wireCitations();
+      running = false;
+    }
+  }
+  step();
+}
+
+function wireCitations() {
+  document.querySelectorAll(".cite").forEach(c => {
+    const ref = c.dataset.ref;
+    const target = document.querySelector('.passage[data-num="' + ref + '"]');
+    if (!target) return;
+    c.addEventListener("mouseenter", () => target.classList.add("glow"));
+    c.addEventListener("mouseleave", () => target.classList.remove("glow"));
+    c.addEventListener("click", () => target.scrollIntoView({ block: "center", behavior: "smooth" }));
+  });
+}
+
+function showPassages(passages) {
+  const box = $("passages");
+  if (!passages) {           // generic query → skeletons
+    box.innerHTML = '<div class="skeleton"></div>'.repeat(4);
+    $("passage-count").textContent = "awaiting backend";
+    return;
+  }
+  $("passage-count").textContent = "top-" + passages.length;
+  passages.forEach((p, idx) => {
+    const div = document.createElement("div");
+    div.className = "passage";
+    div.dataset.num = idx + 1;
+    div.innerHTML =
+      '<div class="ptitle"><span class="pnum">' + (idx + 1) + "</span>" + p.t +
+      (p.hop ? ' <span class="tag hop" style="font-size:9.5px;padding:2px 6px;border-radius:5px">HOP ' + p.hop + "</span>" : "") +
+      "</div>" +
+      '<div class="snippet">' + p.s + "</div>" +
+      '<div class="scores">' +
+        '<span class="score">dense<b>' + p.d.toFixed(2) + "</b></span>" +
+        '<span class="score">bm25<b>' + p.b.toFixed(1) + "</b></span>" +
+        '<span class="score' + (p.low ? " low" : "") + '">rerank<b>' + p.r.toFixed(2) + "</b></span>" +
+      "</div>";
+    box.appendChild(div);
+    later(() => div.classList.add("on"), 120 * idx + 60);
+  });
+}
+
+function runTrace(steps, onDone) {
+  const ul = $("trace");
+  let t = 0;
+  steps.forEach((s, idx) => {
+    const li = document.createElement("li");
+    li.className = s.reflect ? "reflect" : "";
+    li.innerHTML =
+      '<span class="icon"></span>' +
+      '<span class="step-label">' + s.l + "<small>" + s.sub + "</small></span>" +
+      '<span class="ms">' + (s.skipped ? "skipped" : s.ms + " ms") + "</span>";
+    ul.appendChild(li);
+
+    later(() => { li.classList.add("on", "running"); }, t);
+    const dur = Math.max(260, Math.min(s.ms, 900));
+    t += dur;
+    later(() => {
+      li.classList.remove("running");
+      li.classList.add("done");
+      li.querySelector(".icon").textContent = s.skipped ? "—" : "✓";
+      if (idx === steps.length - 1) onDone();
+    }, t);
+    t += 80;
+  });
+}
+
+function fillWaterfall(lat) {
+  const total = lat.embed + lat.retrieve + lat.rerank + lat.generate;
+  const min = 4; // % floor so tiny segments stay visible
+  const segs = ["embed", "retrieve", "rerank", "generate"];
+  let used = 0;
+  const pcts = {};
+  segs.forEach(k => { pcts[k] = lat[k] === 0 ? 0 : Math.max(min, (lat[k] / total) * 100); used += pcts[k]; });
+  segs.forEach(k => {
+    const el = $("seg-" + k);
+    el.style.width = (pcts[k] / used * 100) + "%";
+    if (lat[k] > 0) el.textContent = lat[k] + "ms";
+  });
+  $("wf-total").textContent = "total " + total + " ms" + (lat.generate === 0 ? " · LLM call skipped" : " · P95 budget 800 ms");
+}
+
+/* ───────────────────────── orchestrator ───────────────────────── */
+
+function ask(q) {
+  if (!q.trim() || running) return;
+  running = true;
+  resetRun();
+  $("results").classList.add("show");
+  $("results").scrollIntoView({ behavior: "smooth", block: "start" });
+
+  const demo = DEMOS[q.trim().toLowerCase()] || GENERIC;
+
+  later(() => showPassages(demo.passages), 500);
+  runTrace(demo.trace, () => {
+    fillWaterfall(demo.lat);
+    $("answer-pill").textContent = "generating…";
+    later(() => streamAnswer(demo.answer, demo.mode, demo.faith), 250);
+  });
+}
+
+$("ask").addEventListener("click", () => ask($("q").value));
+$("q").addEventListener("keydown", e => { if (e.key === "Enter") ask($("q").value); });
+document.querySelectorAll(".chip").forEach(c =>
+  c.addEventListener("click", () => { $("q").value = c.dataset.q; ask(c.dataset.q); })
+);
+document.addEventListener("keydown", e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault(); $("q").focus(); }
+});
+</script>
+</body>
+</html>

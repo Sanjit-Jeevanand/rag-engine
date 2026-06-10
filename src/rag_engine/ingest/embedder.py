@@ -7,9 +7,12 @@ from typing import Any
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
-MODEL_NAME = "BAAI/bge-large-en-v1.5"
-EMBED_BATCH = 256
-VECTOR_DIM = 1024
+MODEL_NAME = "BAAI/bge-small-en-v1.5"
+EMBED_BATCH = 256  # bge-small fits large batches on MPS without OOM
+DB_FETCH = 256  # rows fetched from SQLite per outer loop
+VECTOR_DIM = 384  # bge-small output dim
+
+DEVICE = "mps"
 
 
 def _next_offset(conn: sqlite3.Connection) -> int:
@@ -22,7 +25,7 @@ def _next_offset(conn: sqlite3.Connection) -> int:
 def run_embedder(
     db_path: Path, vectors_path: Path, show_progress: bool = False
 ) -> None:
-    model = SentenceTransformer(MODEL_NAME)
+    model = SentenceTransformer(MODEL_NAME, device=DEVICE)
     conn = sqlite3.connect(db_path)
     vectors_path.parent.mkdir(parents=True, exist_ok=True)
     offset = _next_offset(conn)
@@ -34,7 +37,7 @@ def run_embedder(
             WHERE status = 'pending'
             LIMIT ?
             """,
-            (EMBED_BATCH,),
+            (DB_FETCH,),
         ).fetchall()
         if not rows:
             break
