@@ -23,6 +23,6 @@ audit:
 	uv run pip-audit --ignore-vuln PYSEC-2025-217 --ignore-vuln CVE-2026-1839
 
 eval-gate:
-	uv run python eval/gate.py
+	PYTHONPATH=. uv run python eval/gate.py
 
 ci: lint typecheck test audit eval-gate
