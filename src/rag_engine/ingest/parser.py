@@ -18,12 +18,15 @@ def parse_snapshot(path: Path) -> Iterator[WikiArticle]:
     opener = gzip.open if path.suffix == ".gz" else open
     with opener(path, "rt", encoding="utf-8") as f:
         while True:
-            index_line = f.readline()
-            if not index_line:
-                break
-            content_line = f.readline()
-            if not content_line:
-                break
+            try:
+                index_line = f.readline()
+                if not index_line:
+                    break
+                content_line = f.readline()
+                if not content_line:
+                    break
+            except (EOFError, gzip.BadGzipFile):
+                break  # end of valid gzip stream (truncated or trailing garbage)
             try:
                 index = json.loads(index_line)
                 content = json.loads(content_line)

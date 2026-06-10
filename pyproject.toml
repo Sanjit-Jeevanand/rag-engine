@@ -10,6 +10,7 @@ dependencies = [
     "pydantic-settings>=2.3",
     "sentence-transformers>=5.5.1",
     "structlog>=24.1",
+    "tqdm>=4.68.2",
 ]
 
 [dependency-groups]
