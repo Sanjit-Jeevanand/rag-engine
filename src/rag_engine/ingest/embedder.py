@@ -12,7 +12,7 @@ MODEL_NAME = "BAAI/bge-small-en-v1.5"
 EMBED_BATCH = 256  # inner encode batch — MPS sweet spot for bge-small
 DB_FETCH = 4096  # rows per outer loop — amortizes SQL, commit, and file I/O
 VECTOR_DIM = 384  # bge-small output dim
-DEVICE = "mps"
+DEVICE = "mps" if torch.backends.mps.is_available() else "cpu"
 
 # flush MPS allocator every outer loop (~4096 chunks) — prevents unbounded growth
 _MPS_FLUSH_EVERY = 1
