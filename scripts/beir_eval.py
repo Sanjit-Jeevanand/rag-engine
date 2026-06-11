@@ -96,9 +96,9 @@ def embed_texts(texts: list[str], model: SentenceTransformer) -> np.ndarray:
 
 def evaluate_dataset(cfg: dict, model: SentenceTransformer) -> dict:
     name = cfg["name"]
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Dataset: {name.upper()}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     # Load corpus
     hf_id, hf_cfg, hf_split = cfg["corpus_hf"]

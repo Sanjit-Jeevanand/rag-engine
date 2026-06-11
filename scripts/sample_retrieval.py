@@ -49,7 +49,7 @@ def main() -> None:
             hits += 1
 
         status = "✓ HIT " if full_hit else "✗ MISS"
-        print(f"\n{'─'*72}")
+        print(f"\n{'─' * 72}")
         print(f"[{i:02d}/{SAMPLE}] {status}   Recall={rec:.0%}")
         print(f"Q:  {item['question']}")
         print(f"A:  {item['answer']}")
@@ -62,10 +62,10 @@ def main() -> None:
             mark = " ✓" if title in relevant else "  "
             print(f"  {rank:2}.{mark} {title}")
 
-    print(f"\n{'═'*72}")
+    print(f"\n{'═' * 72}")
     print(
         f"Full hits (both articles found in top-{K}): {hits}/{SAMPLE}  "
-        f"({hits/SAMPLE:.0%})"
+        f"({hits / SAMPLE:.0%})"
     )
 
 

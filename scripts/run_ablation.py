@@ -201,7 +201,7 @@ def main() -> None:
     results: dict[str, dict[str, Any]] = {}
 
     for name, params in STRATEGIES.items():
-        print(f"\n{'='*55}")
+        print(f"\n{'=' * 55}")
         chunk = params["chunk_chars"]
         overlap = params["overlap_chars"]
         print(f"strategy {name}  (chunk={chunk}, overlap={overlap})")
@@ -227,7 +227,7 @@ def main() -> None:
         )
 
     # ── comparison table ──────────────────────────────────────────────────────
-    print(f"\n{'='*72}")
+    print(f"\n{'=' * 72}")
     header = f"{'Strategy':<12} {'Chunks':>8} {'vec/s':>7}"
     header += f" {'nDCG@10':>9} {'Recall@10':>10} {'MRR':>8} {'N':>5}"
     print(header)
