@@ -8,7 +8,7 @@ from datasets import load_dataset
 
 DB_PATH = Path("data/docs.db")
 OUT = Path("eval/hotpotqa_gold.json")
-SAMPLE = 200
+SAMPLE = 1000
 SEED = 42
 
 

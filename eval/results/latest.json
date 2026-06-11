@@ -1,6 +1,6 @@
 {
-  "ndcg_at_10": 0.4689,
-  "recall_at_10": 0.4825,
-  "mrr": 0.5862,
-  "n_questions": 200
+  "ndcg_at_10": 0.4618,
+  "recall_at_10": 0.478,
+  "mrr": 0.5994,
+  "n_questions": 1000
 }
