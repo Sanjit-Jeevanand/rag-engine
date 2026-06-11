@@ -7,10 +7,13 @@ from sentence_transformers import SentenceTransformer
 
 MODEL_NAME = "BAAI/bge-small-en-v1.5"
 VECTOR_DIM = 384
+DEDUP_FACTOR = 5  # fetch k*5 chunks then dedup to k unique articles
 
 
 class VectorIndex:
-    def __init__(self, db_path: Path, vectors_path: Path) -> None:
+    def __init__(
+        self, db_path: Path, vectors_path: Path = Path("data/vectors.bin")
+    ) -> None:
         vectors = np.fromfile(vectors_path, dtype=np.float32).reshape(-1, VECTOR_DIM)
         n = len(vectors)
 
@@ -39,7 +42,7 @@ class VectorIndex:
             convert_to_numpy=True,
         ).astype(np.float32)
 
-        _, indices = self._index.search(qvec, k * 5)
+        _, indices = self._index.search(qvec, k * DEDUP_FACTOR)
 
         seen: set[str] = set()
         results: list[str] = []

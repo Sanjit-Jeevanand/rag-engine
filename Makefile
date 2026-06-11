@@ -5,7 +5,7 @@
 # make eval-gate  — check eval/results/latest.json exists with a sentinel key
 # make ci         — run all of the above in order; mirrors the GitHub Actions pipeline
 
-.PHONY: lint typecheck test audit eval-gate ci
+.PHONY: lint typecheck test test-faiss audit eval-gate ci
 
 lint:
 	uv run ruff check .
@@ -16,6 +16,9 @@ typecheck:
 
 test:
 	uv run pytest
+
+test-faiss:
+	uv run pytest tests/test_faiss_properties.py -v
 
 audit:
 	# CVE-2026-1839 / PYSEC-2025-217: fix requires transformers>=5.0.0rc3 but

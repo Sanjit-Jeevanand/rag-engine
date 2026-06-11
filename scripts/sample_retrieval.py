@@ -31,7 +31,7 @@ def _recall(retrieved: list[str], relevant: set[str]) -> float:
 
 
 def main() -> None:
-    print("loading index (this takes ~30s)...")
+    print("loading index...")
     index = VectorIndex(DB_PATH, VECTORS_PATH)
 
     gold = json.loads(GOLD_PATH.read_text())

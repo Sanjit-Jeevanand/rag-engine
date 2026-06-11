@@ -179,14 +179,33 @@ Use this to reproduce the build from scratch or hand off to another engineer.
 
 ## Phase 3 — FAISS Index Comparison
 
-### Goal
-Compare IndexFlatL2 vs IndexHNSWFlat vs IndexIVFPQ on the 8.8M-vector Wikipedia index.
-Plot recall-latency Pareto curve; persist best index to disk.
-
-### Plan
-70. Benchmark IndexFlatIP (current) for latency baseline
-71. Add IndexHNSWFlat — approximate, graph-based, fast at query time
-72. Add IndexIVFPQ — compressed, smallest memory footprint
-73. Property tests with Hypothesis — recall guarantees at each configuration
-74. Plot Pareto curve (recall vs P99 latency)
-75. Persist winning index to disk; load in eval/index.py
+70. Create `scripts/benchmark_faiss.py`:
+    - `load_vectors(path)` — loads full vectors.bin (13.5 GB)
+    - `sample_queries(vectors, n=1000)` — random rows as benchmark queries
+    - `build_flat_l2(vectors)` — ground truth exact index
+    - `compute_ground_truth(index, queries, k)` — exact top-k for each query
+    - `benchmark(index, queries, ground_truth, k, label)` — P50/P99 latency + recall@10
+    - `build_hnsw(vectors, ef_construction=200)` — M=32 graph index
+    - `build_ivfpq(vectors, nlist=4096, m_pq=48, nbits=8)` — trains on 500K sample
+    - sweeps ef=32/64/128/256 for HNSW, nprobe=8/32/64/128 for IVFPQ
+71. `PYTHONPATH=src:. uv run python scripts/benchmark_faiss.py`
+    → IndexFlatL2: recall=1.0000, p50=117.8ms, p99=127.6ms
+    → HNSW ef=64:  recall=0.9857, p50=0.387ms, p99=0.682ms  ← chosen (300× faster)
+    → IVFPQ nprobe=128: recall=0.6878 (ceiling — PQ compression too lossy)
+72. Decision: IndexHNSWFlat ef=64 for serving; IndexFlatIP stays in eval gate
+    → switching eval to HNSW dropped nDCG 0.46→0.37 (dedup multiplier mismatch)
+73. Create `scripts/build_hnsw_index.py`:
+    - builds IndexHNSWFlat (M=32, efC=200, efSearch=64) over full 8.8M vectors
+    - `faiss.write_index(index, "data/hnsw.index")` — 15.9 GB on disk
+    - `uv run python scripts/build_hnsw_index.py` — runs in ~21 min
+74. `uv add --dev hypothesis`
+75. Create `tests/test_faiss_properties.py`:
+    - synthetic 100K-vector clustered corpus (500 clusters, noise=0.009/dim) — mimics real embedding structure
+    - `test_hnsw_returns_exactly_k_results` — Hypothesis, 200 examples
+    - `test_hnsw_average_recall_meets_threshold` — avg recall@10 ≥ 0.90 over 500 queries
+    - `test_hnsw_is_deterministic` — Hypothesis, 100 examples
+    - `test_hnsw_broken_ef_collapses_recall` — ef=64 outperforms ef=2 by ≥ 0.10
+76. Isolated from main suite (segfault with both in memory):
+    - `pyproject.toml`: `addopts = "--ignore=tests/test_faiss_properties.py"`
+    - `Makefile`: added `test-faiss` target
+    - `make test-faiss` → 4 passed in 7.7s

@@ -201,5 +201,36 @@ PYTHONPATH=src:. uv run python scripts/beir_eval.py
 
 ---
 
-## Phase 3 — FAISS Index Comparison 🔄
+## Phase 3 — FAISS Index Comparison ✅
 Goal: compare IndexFlatL2 vs IndexHNSWFlat vs IndexIVFPQ on recall-latency tradeoff; persist best index to disk.
+
+### Files Created
+- `scripts/benchmark_faiss.py` — benchmarks all three index types on 1,000 held-out queries; reports recall@10 vs exact + P50/P99 latency
+- `scripts/build_hnsw_index.py` — builds IndexHNSWFlat (M=32, efC=200) over 8.8M vectors and saves to `data/hnsw.index`
+- `tests/test_faiss_properties.py` — Hypothesis property tests: k results always returned, avg recall ≥ 90%, deterministic, break-it ef=2 gap test
+
+### Benchmark Results (1,000 queries, 8.8M vectors)
+| Index | recall@10 | p50 ms | p99 ms |
+|-------|-----------|--------|--------|
+| IndexFlatL2 (exact) | 1.0000 | 117.8 | 127.6 |
+| IndexHNSWFlat ef=32 | 0.9760 | 0.229 | 0.403 |
+| **IndexHNSWFlat ef=64 ✓** | **0.9857** | **0.387** | **0.682** |
+| IndexHNSWFlat ef=128 | 0.9886 | 0.902 | 7.123 |
+| IndexHNSWFlat ef=256 | 0.9917 | 1.298 | 2.582 |
+| IndexIVFPQ nprobe=8 | 0.6374 | 0.355 | 0.507 |
+| IndexIVFPQ nprobe=128 | 0.6878 | 2.920 | 3.694 |
+
+### Key Decisions
+- **IndexHNSWFlat ef=64** chosen for the serving path: 98.6% ANNS recall, 0.39ms p50, 300× faster than exact
+- **IVFPQ rejected**: recall ceiling at ~69% regardless of nprobe — PQ compression (32×) is too lossy for 8.8M vectors
+- **Eval gate stays on IndexFlatIP**: switching to HNSW dropped nDCG 0.46 → 0.37 due to dedup multiplier mismatch; exact search is non-negotiable for reproducible CI metrics
+- **HNSW persisted to disk**: `data/hnsw.index` (15.9 GB); build takes ~21 min once, loads in seconds after
+- **FAISS property tests isolated**: building 3× 100K-vector HNSW indexes segfaults with rest of suite; `make test-faiss` runs them separately
+
+### Commands Run
+```bash
+PYTHONPATH=src:. uv run python scripts/benchmark_faiss.py   # full benchmark
+uv run python scripts/build_hnsw_index.py                   # build + persist HNSW (~21 min)
+make test-faiss                                             # property tests
+make ci                                                     # full pipeline
+```
