@@ -9,12 +9,11 @@ import torch
 from sentence_transformers import SentenceTransformer
 
 MODEL_NAME = "BAAI/bge-small-en-v1.5"
-EMBED_BATCH = 256  # inner encode batch — MPS sweet spot for bge-small
-DB_FETCH = 4096  # rows per outer loop — amortizes SQL, commit, and file I/O
-VECTOR_DIM = 384  # bge-small output dim
+EMBED_BATCH = 256
+DB_FETCH = 4096
+VECTOR_DIM = 384
 DEVICE = "mps" if torch.backends.mps.is_available() else "cpu"
 
-# flush MPS allocator every outer loop (~4096 chunks) — prevents unbounded growth
 _MPS_FLUSH_EVERY = 1
 
 
@@ -40,7 +39,6 @@ def run_embedder(
         vectors_path.stat().st_size // (VECTOR_DIM * 4) if vectors_path.exists() else 0
     )
     if file_vectors < offset:
-        # DB claims more than file contains — reset orphaned rows to pending
         conn.execute(
             "UPDATE documents SET status='pending', vector_offset=NULL,"
             " embedded_at=NULL WHERE vector_offset >= ?",
@@ -51,7 +49,6 @@ def run_embedder(
     else:
         expected = offset * VECTOR_DIM * 4
         if vectors_path.exists() and vectors_path.stat().st_size > expected:
-            # file has more bytes than DB committed — truncate orphan vectors
             with vectors_path.open("r+b") as f:
                 f.truncate(expected)
 

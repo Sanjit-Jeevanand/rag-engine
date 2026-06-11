@@ -1,0 +1,1040 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>RAG Engine — Wikipedia QA</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%236366f1'/%3E%3Cstop offset='1' stop-color='%2322d3ee'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='16' cy='16' r='13' fill='url(%23g)'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #07090d;
+    --card: rgba(255,255,255,0.028);
+    --card-hover: rgba(255,255,255,0.05);
+    --border: rgba(255,255,255,0.08);
+    --border-bright: rgba(255,255,255,0.14);
+    --text: #e9ecf2;
+    --muted: #8b93a7;
+    --faint: #5b6275;
+    --accent1: #6366f1;
+    --accent2: #22d3ee;
+    --green: #34d399;
+    --amber: #fbbf24;
+    --red: #f87171;
+    --mono: "SF Mono", ui-monospace, Menlo, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  ::selection { background: rgba(99,102,241,0.4); }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    min-height: 100vh; padding: 0 24px 80px; overflow-x: hidden;
+  }
+
+  /* ── aurora background ─────────────────────────────── */
+  .aurora { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+  .aurora i {
+    position: absolute; border-radius: 50%; filter: blur(90px); opacity: .13;
+  }
+  .aurora i:nth-child(1) { width: 640px; height: 640px; background: #6366f1; top: -280px; left: 8%;  animation: drift1 26s ease-in-out infinite alternate; }
+  .aurora i:nth-child(2) { width: 520px; height: 520px; background: #22d3ee; top: -200px; right: 4%; animation: drift2 32s ease-in-out infinite alternate; }
+  .aurora i:nth-child(3) { width: 460px; height: 460px; background: #7c3aed; top: 40vh; left: -200px; animation: drift1 38s ease-in-out infinite alternate-reverse; }
+  @keyframes drift1 { to { transform: translate(120px, 90px) scale(1.12); } }
+  @keyframes drift2 { to { transform: translate(-140px, 70px) scale(0.94); } }
+
+  .wrap { max-width: 1100px; margin: 0 auto; }
+
+  /* ── header ────────────────────────────────────────── */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 22px 0; flex-wrap: wrap; gap: 12px;
+  }
+  .brand { display: flex; align-items: center; gap: 11px; }
+  .brand .mark {
+    width: 26px; height: 26px; border-radius: 8px;
+    background: linear-gradient(135deg, var(--accent1), var(--accent2));
+    display: grid; place-items: center; font-size: 13px; font-weight: 800; color: #fff;
+    box-shadow: 0 4px 18px rgba(99,102,241,0.35);
+  }
+  .brand b { font-size: 14px; letter-spacing: 0.16em; font-weight: 750; }
+  .brand span { font-size: 12.5px; color: var(--muted); }
+  .stats { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .stat {
+    font-size: 11.5px; font-weight: 600; padding: 6px 12px; border-radius: 999px;
+    border: 1px solid var(--border); color: var(--muted); background: var(--card);
+    font-variant-numeric: tabular-nums;
+  }
+  .stat b { color: var(--text); font-weight: 700; }
+  .stat.mock {
+    color: var(--amber); border-color: rgba(251,191,36,0.35);
+    background: rgba(251,191,36,0.07); letter-spacing: 0.06em;
+  }
+
+  /* ── hero ──────────────────────────────────────────── */
+  .hero { text-align: center; padding: 52px 0 8px; }
+  .hero h1 { font-size: clamp(32px, 5vw, 46px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.12; }
+  .hero h1 em {
+    font-style: normal;
+    background: linear-gradient(90deg, var(--accent1) 20%, var(--accent2) 50%, var(--accent1) 80%);
+    background-size: 200% auto;
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: sheen 5s linear infinite;
+  }
+  @keyframes sheen { to { background-position: 200% center; } }
+  .hero p { color: var(--muted); margin-top: 13px; font-size: 15px; }
+  .hero p code { font-family: var(--mono); font-size: 12.5px; color: var(--accent2); }
+
+  .searchbox {
+    display: flex; gap: 10px; max-width: 740px; margin: 34px auto 0;
+    background: rgba(255,255,255,0.04); border: 1px solid var(--border-bright);
+    border-radius: 18px; padding: 9px;
+    transition: border-color .25s, box-shadow .25s, transform .25s;
+    backdrop-filter: blur(8px);
+  }
+  .searchbox:focus-within {
+    border-color: rgba(99,102,241,0.65);
+    box-shadow: 0 0 0 4px rgba(99,102,241,0.13), 0 18px 50px -18px rgba(99,102,241,0.4);
+    transform: translateY(-1px);
+  }
+  .searchbox input {
+    flex: 1; background: none; border: none; outline: none;
+    color: var(--text); font-size: 16px; padding: 11px 15px; font-family: inherit;
+  }
+  .searchbox input::placeholder { color: var(--faint); }
+  .searchbox button {
+    background: linear-gradient(120deg, var(--accent1), var(--accent2));
+    border: none; border-radius: 12px; color: #fff;
+    font-size: 14px; font-weight: 700; padding: 0 24px;
+    cursor: pointer; font-family: inherit;
+    transition: filter .2s, transform .12s;
+    box-shadow: 0 6px 22px -8px rgba(99,102,241,0.6);
+  }
+  .searchbox button:hover { filter: brightness(1.12); }
+  .searchbox button:active { transform: scale(0.96); }
+
+  .examples { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 18px; }
+  .chip {
+    font-size: 13px; color: var(--muted); cursor: pointer;
+    border: 1px solid var(--border); border-radius: 999px;
+    padding: 8px 15px; background: var(--card); font-family: inherit;
+    transition: color .2s, border-color .2s, background .2s, transform .15s;
+  }
+  .chip:hover {
+    color: var(--text); border-color: rgba(99,102,241,0.5);
+    background: var(--card-hover); transform: translateY(-1px);
+  }
+  .tag {
+    font-size: 9.5px; font-weight: 800; letter-spacing: 0.08em;
+    margin-left: 7px; padding: 2.5px 7px; border-radius: 5px; vertical-align: 1px;
+  }
+  .tag.hop { color: var(--accent2); background: rgba(34,211,238,0.1); }
+  .tag.abstain { color: var(--amber); background: rgba(251,191,36,0.1); }
+
+  /* ── settings strip ────────────────────────────────── */
+  .settings {
+    display: flex; gap: 10px; justify-content: center; align-items: center;
+    flex-wrap: wrap; margin: 26px auto 0; max-width: 760px;
+    padding: 12px 18px; border-radius: 14px;
+    border: 1px dashed rgba(255,255,255,0.1); background: rgba(255,255,255,0.015);
+  }
+  .settings .s-label {
+    font-size: 10.5px; font-weight: 700; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--faint); margin-right: 4px;
+  }
+  .toggle {
+    display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+    font-size: 12.5px; color: var(--muted); padding: 6px 12px;
+    border-radius: 999px; border: 1px solid var(--border); background: var(--card);
+    font-family: inherit; transition: all .2s;
+  }
+  .toggle .knob {
+    width: 26px; height: 15px; border-radius: 999px; position: relative;
+    background: rgba(255,255,255,0.12); transition: background .2s;
+  }
+  .toggle .knob::after {
+    content: ""; position: absolute; top: 2px; left: 2px;
+    width: 11px; height: 11px; border-radius: 50%; background: #98a0b3;
+    transition: transform .2s, background .2s;
+  }
+  .toggle.on { color: var(--text); border-color: rgba(99,102,241,0.45); }
+  .toggle.on .knob { background: linear-gradient(90deg, var(--accent1), var(--accent2)); }
+  .toggle.on .knob::after { transform: translateX(11px); background: #fff; }
+  .thresh { display: inline-flex; align-items: center; gap: 9px; font-size: 12.5px; color: var(--muted); }
+  .thresh input { accent-color: var(--accent1); width: 110px; cursor: pointer; }
+  .thresh b { color: var(--text); font-variant-numeric: tabular-nums; font-weight: 650; min-width: 32px; }
+  .settings .hint { font-size: 11px; color: var(--faint); flex-basis: 100%; text-align: center; margin-top: 2px; }
+
+  /* ── results ───────────────────────────────────────── */
+  #results { display: none; margin-top: 44px; }
+  #results.show { display: block; animation: rise .5s cubic-bezier(.2,.7,.3,1); }
+  @keyframes rise { from { opacity: 0; transform: translateY(16px); } }
+
+  /* pipeline strip */
+  .pipeline {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    margin-bottom: 18px; padding: 20px 26px 16px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+    position: relative; overflow: hidden;
+  }
+  .pnode { display: flex; flex-direction: column; align-items: center; gap: 8px; position: relative; flex: 1; }
+  .pnode .bubble {
+    width: 34px; height: 34px; border-radius: 50%;
+    border: 1.5px solid var(--border-bright); background: rgba(255,255,255,0.03);
+    display: grid; place-items: center; font-size: 13px; color: var(--faint);
+    transition: all .3s; position: relative; z-index: 1;
+  }
+  .pnode .pl { font-size: 10.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); transition: color .3s; }
+  .pnode .pms { font-size: 10.5px; color: var(--faint); font-variant-numeric: tabular-nums; min-height: 13px; }
+  .pnode::before {
+    content: ""; position: absolute; top: 17px; right: 50%; width: 100%; height: 1.5px;
+    background: var(--border); z-index: 0;
+  }
+  .pnode:first-child::before { display: none; }
+  .pnode.done::before { background: linear-gradient(90deg, var(--accent1), var(--accent2)); }
+  .pnode.active .bubble {
+    border-color: var(--accent2); color: var(--accent2);
+    box-shadow: 0 0 0 5px rgba(34,211,238,0.12), 0 0 24px rgba(34,211,238,0.25);
+    animation: breathe 1.1s ease-in-out infinite;
+  }
+  @keyframes breathe { 50% { box-shadow: 0 0 0 8px rgba(34,211,238,0.06), 0 0 28px rgba(34,211,238,0.3); } }
+  .pnode.active .pl { color: var(--accent2); }
+  .pnode.done .bubble { border-color: rgba(52,211,153,0.55); color: var(--green); background: rgba(52,211,153,0.07); }
+  .pnode.done .pl { color: var(--muted); }
+  .pnode.skip .bubble { border-style: dashed; opacity: .55; }
+  .pnode.fail .bubble { border-color: rgba(251,191,36,0.6); color: var(--amber); background: rgba(251,191,36,0.07); }
+
+  .cols { display: grid; grid-template-columns: 1.55fr 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 880px) { .cols { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 16px; padding: 22px;
+    transition: border-color .25s;
+  }
+  .card + .card { margin-top: 16px; }
+  .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; gap: 10px; }
+  .label {
+    font-size: 11px; font-weight: 750; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .head-actions { display: flex; gap: 8px; align-items: center; }
+  .mini-btn {
+    font-size: 11px; font-weight: 650; color: var(--muted); cursor: pointer;
+    border: 1px solid var(--border); border-radius: 8px; padding: 4px 10px;
+    background: none; font-family: var(--mono); transition: all .2s;
+  }
+  .mini-btn:hover { color: var(--text); border-color: var(--border-bright); }
+  .pill { font-size: 11px; font-weight: 700; padding: 4.5px 12px; border-radius: 999px; white-space: nowrap; }
+  .pill.grounded { color: var(--green); background: rgba(52,211,153,0.1); border: 1px solid rgba(52,211,153,0.3); }
+  .pill.abstained { color: var(--amber); background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.3); }
+  .pill.unfaithful { color: var(--red); background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.35); }
+  .pill.working { color: var(--accent2); background: rgba(34,211,238,0.08); border: 1px solid rgba(34,211,238,0.25); }
+
+  /* answer */
+  .answer { font-size: 15.5px; line-height: 1.78; min-height: 80px; }
+  .answer b { color: #fff; }
+  .cursor {
+    display: inline-block; width: 8px; height: 17px; margin-left: 2px;
+    background: var(--accent2); vertical-align: text-bottom;
+    animation: blink .9s steps(1) infinite; border-radius: 2px;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+  .cite {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 19px; height: 19px; padding: 0 4px; margin: 0 2px;
+    border-radius: 6px; font-size: 11px; font-weight: 800;
+    color: var(--accent2); background: rgba(34,211,238,0.1);
+    border: 1px solid rgba(34,211,238,0.25);
+    cursor: pointer; vertical-align: 2px;
+    transition: background .2s, transform .15s;
+  }
+  .cite:hover { background: rgba(34,211,238,0.25); transform: translateY(-2px); }
+  .abstain-note { border-left: 3px solid var(--amber); padding: 4px 0 4px 16px; color: #dcceA0; }
+  .danger-note  { border-left: 3px solid var(--red);   padding: 4px 0 4px 16px; }
+
+  /* verification claims */
+  .claims { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); display: none; }
+  .claims.show { display: block; animation: rise .4s ease; }
+  .claims .label { margin-bottom: 12px; display: block; }
+  .claim { display: flex; gap: 11px; padding: 6px 0; font-size: 13px; line-height: 1.55; }
+  .claim .ic {
+    width: 18px; height: 18px; border-radius: 6px; flex-shrink: 0; margin-top: 1px;
+    display: grid; place-items: center; font-size: 11px; font-weight: 800;
+  }
+  .claim.ok .ic { color: var(--green); background: rgba(52,211,153,0.12); }
+  .claim.bad .ic { color: var(--red); background: rgba(248,113,113,0.12); }
+  .claim .ctext { color: var(--muted); }
+  .claim .ctext b { color: var(--text); font-weight: 600; }
+  .claim .refs { color: var(--accent2); font-family: var(--mono); font-size: 11px; }
+  .claim .cnote { display: block; font-size: 11.5px; color: var(--faint); margin-top: 1px; }
+
+  /* trace */
+  .trace { list-style: none; }
+  .trace li {
+    display: flex; gap: 14px; padding: 9px 0; font-size: 13.5px;
+    opacity: 0; transform: translateY(6px);
+    transition: opacity .35s, transform .35s;
+  }
+  .trace li.on { opacity: 1; transform: none; }
+  .trace .icon {
+    width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
+    display: grid; place-items: center; font-size: 11px; margin-top: 1px;
+    border: 1px solid var(--border); background: var(--card); color: var(--green);
+  }
+  .trace li.running .icon::after {
+    content: ""; width: 10px; height: 10px; border-radius: 50%;
+    border: 2px solid rgba(34,211,238,0.25); border-top-color: var(--accent2);
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .trace li.warn .icon { color: var(--amber); border-color: rgba(251,191,36,0.4); }
+  .trace .step-label { flex: 1; }
+  .trace .step-label small { display: block; color: var(--muted); margin-top: 2px; line-height: 1.45; }
+  .trace .ms { color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; font-family: var(--mono); }
+  .trace li.reflect .step-label { color: var(--accent2); }
+
+  /* passages */
+  .passage {
+    border: 1px solid var(--border); border-radius: 13px;
+    padding: 15px 17px; margin-bottom: 10px; background: rgba(255,255,255,0.015);
+    opacity: 0; transform: translateY(8px);
+    transition: opacity .4s, transform .4s, border-color .25s, box-shadow .25s;
+  }
+  .passage.on { opacity: 1; transform: none; }
+  .passage.glow { border-color: rgba(34,211,238,0.6); box-shadow: 0 0 0 3px rgba(34,211,238,0.1); }
+  .ptitle { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 650; margin-bottom: 7px; flex-wrap: wrap; }
+  .pnum {
+    min-width: 18px; height: 18px; border-radius: 6px;
+    display: inline-grid; place-items: center; font-size: 10.5px; font-weight: 800;
+    color: var(--accent2); background: rgba(34,211,238,0.1);
+    border: 1px solid rgba(34,211,238,0.25);
+  }
+  .snippet {
+    font-size: 12.5px; color: var(--muted); line-height: 1.6;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .scorebars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 12px; }
+  .sb { font-size: 10px; color: var(--faint); }
+  .sb .sb-top { display: flex; justify-content: space-between; margin-bottom: 4px; font-variant-numeric: tabular-nums; }
+  .sb .sb-top b { color: var(--text); font-weight: 650; }
+  .sb.low .sb-top b { color: var(--red); }
+  .sb .rail { height: 3.5px; border-radius: 99px; background: rgba(255,255,255,0.07); overflow: hidden; }
+  .sb .fillb { height: 100%; width: 0; border-radius: 99px; background: linear-gradient(90deg, var(--accent1), var(--accent2)); transition: width .8s ease .15s; }
+  .sb.low .fillb { background: var(--red); }
+  .sb.na .sb-top b { color: var(--faint); }
+  .skeleton {
+    border-radius: 13px; height: 96px; margin-bottom: 10px;
+    background: linear-gradient(100deg, rgba(255,255,255,0.03) 40%, rgba(255,255,255,0.07) 50%, rgba(255,255,255,0.03) 60%);
+    background-size: 200% 100%; animation: sk 1.4s infinite;
+  }
+  @keyframes sk { to { background-position: -200% 0; } }
+
+  /* latency */
+  .waterfall { display: flex; height: 30px; border-radius: 10px; overflow: hidden; background: rgba(255,255,255,0.045); }
+  .seg {
+    height: 100%; width: 0%; transition: width .7s ease;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10.5px; font-weight: 700; color: rgba(255,255,255,0.92);
+    white-space: nowrap; overflow: hidden; font-family: var(--mono);
+  }
+  .seg.embed { background: #6366f1; } .seg.retrieve { background: #14b8a6; }
+  .seg.rerank { background: #0ea5e9; } .seg.generate { background: rgba(99,102,241,0.34); }
+  .wf-legend { display: flex; gap: 15px; margin-top: 12px; flex-wrap: wrap; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .wf-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 6px; }
+  .wf-legend .over { color: var(--amber); }
+  .wf-total { margin-left: auto; color: var(--text); font-weight: 650; }
+
+  /* json viewer */
+  #json-card { display: none; }
+  #json-card.show { display: block; animation: rise .35s ease; }
+  #json-card pre {
+    font-family: var(--mono); font-size: 11px; line-height: 1.65;
+    overflow-x: auto; color: var(--muted); max-height: 420px; overflow-y: auto;
+  }
+  .jk { color: #a5b4fc; } .js { color: #6ee7b7; } .jn { color: #fcd34d; } .jb { color: #f0abfc; }
+
+  /* history */
+  .history { display: none; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 12px; }
+  .history.show { display: flex; }
+  .history .h-label { font-size: 10.5px; color: var(--faint); letter-spacing: .12em; text-transform: uppercase; font-weight: 700; align-self: center; }
+  .hchip {
+    font-size: 12px; color: var(--faint); cursor: pointer; font-family: inherit;
+    border: 1px solid transparent; border-radius: 999px; padding: 5px 12px;
+    background: rgba(255,255,255,0.02); transition: all .2s;
+    max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .hchip:hover { color: var(--muted); border-color: var(--border); }
+
+  /* tooltip */
+  #tooltip {
+    position: fixed; z-index: 50; max-width: 300px; pointer-events: none;
+    background: #11141c; border: 1px solid var(--border-bright); border-radius: 11px;
+    padding: 11px 13px; font-size: 12px; line-height: 1.55; color: var(--muted);
+    opacity: 0; transform: translateY(4px); transition: opacity .18s, transform .18s;
+    box-shadow: 0 18px 50px -12px rgba(0,0,0,0.7);
+  }
+  #tooltip.show { opacity: 1; transform: none; }
+  #tooltip b { color: var(--text); display: block; margin-bottom: 3px; font-size: 12.5px; }
+
+  /* roadmap footer */
+  footer { margin-top: 64px; }
+  .roadmap {
+    display: flex; gap: 4px; justify-content: center; flex-wrap: wrap;
+    margin-bottom: 22px;
+  }
+  .ph {
+    display: flex; align-items: center; gap: 6px; font-size: 10.5px;
+    color: var(--faint); padding: 5px 10px; border-radius: 999px;
+    border: 1px solid transparent;
+  }
+  .ph i { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,0.14); }
+  .ph.done { color: var(--muted); } .ph.done i { background: var(--green); }
+  .ph.now { color: var(--accent2); border-color: rgba(34,211,238,0.3); } .ph.now i { background: var(--accent2); animation: blink 1.4s steps(1) infinite; }
+  .disclaimer { text-align: center; font-size: 12px; color: var(--faint); line-height: 1.8; }
+  .disclaimer code { font-family: var(--mono); color: var(--muted); font-size: 11px; }
+
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent2); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="aurora"><i></i><i></i><i></i></div>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <span class="mark">R</span>
+      <b>RAG&nbsp;ENGINE</b>
+      <span>Wikipedia · agentic retrieval</span>
+    </div>
+    <div class="stats">
+      <span class="stat"><b data-count="1000000">0</b>&nbsp;articles</span>
+      <span class="stat"><b data-count="8797519">0</b>&nbsp;chunks</span>
+      <span class="stat"><b>bge-small</b>&nbsp;· 384d</span>
+      <span class="stat mock">MOCK MODE</span>
+    </div>
+  </header>
+
+  <section class="hero">
+    <h1>Ask Wikipedia <em>anything</em>.</h1>
+    <p>Hybrid retrieval · cross-encoder reranking · multi-hop reasoning · grounded citations<br>
+       <code>query → embed → search 8.8M vectors → rerank → verify → generate</code></p>
+
+    <div class="searchbox">
+      <input id="q" type="text" placeholder="Ask anything about the world…  (⌘K or /)" autocomplete="off" spellcheck="false">
+      <button id="ask">Ask</button>
+    </div>
+
+    <div class="examples">
+      <button class="chip" data-q="Why is the sky blue?">Why is the sky blue?</button>
+      <button class="chip" data-q="What is the capital of the country where the Eiffel Tower is located?">
+        Capital of the Eiffel Tower's country<span class="tag hop">MULTI-HOP</span>
+      </button>
+      <button class="chip" data-q="Who won the 2031 FIFA World Cup?">
+        Who won the 2031 World Cup?<span class="tag abstain">ABSTAINS</span>
+      </button>
+    </div>
+
+    <div class="history" id="history"></div>
+
+    <div class="settings">
+      <span class="s-label">Pipeline ablations</span>
+      <button class="toggle on" id="t-hybrid" aria-pressed="true">
+        <span class="knob"></span> Hybrid BM25 + dense
+      </button>
+      <button class="toggle on" id="t-multihop" aria-pressed="true">
+        <span class="knob"></span> Multi-hop agent
+      </button>
+      <span class="thresh">
+        abstain&nbsp;below <input type="range" id="t-thresh" min="0" max="100" value="55"> <b id="thresh-val">0.55</b>
+      </span>
+      <span class="hint">flip a switch and re-run a query — each ablation visibly changes the outcome, just like it will in the evals</span>
+    </div>
+  </section>
+
+  <section id="results">
+    <div class="pipeline" id="pipeline">
+      <div class="pnode" data-stage="embed"><div class="bubble">⌁</div><span class="pl">Embed</span><span class="pms"></span></div>
+      <div class="pnode" data-stage="retrieve"><div class="bubble">⌕</div><span class="pl">Retrieve</span><span class="pms"></span></div>
+      <div class="pnode" data-stage="rerank"><div class="bubble">⇅</div><span class="pl">Rerank</span><span class="pms"></span></div>
+      <div class="pnode" data-stage="verify"><div class="bubble">✓</div><span class="pl">Verify</span><span class="pms"></span></div>
+      <div class="pnode" data-stage="generate"><div class="bubble">✎</div><span class="pl">Generate</span><span class="pms"></span></div>
+    </div>
+
+    <div class="cols">
+      <div>
+        <div class="card">
+          <div class="card-head">
+            <span class="label">Answer</span>
+            <div class="head-actions">
+              <button class="mini-btn" id="copy-btn" title="Copy answer">copy</button>
+              <button class="mini-btn" id="json-btn" title="View API payload">{ } api</button>
+              <span class="pill working" id="answer-pill">retrieving…</span>
+            </div>
+          </div>
+          <div class="answer" id="answer" aria-live="polite"><span class="cursor"></span></div>
+          <div class="claims" id="claims"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><span class="label">Agent trace</span></div>
+          <ul class="trace" id="trace"></ul>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><span class="label">Latency budget</span></div>
+          <div class="waterfall">
+            <div class="seg embed" id="seg-embed"></div>
+            <div class="seg retrieve" id="seg-retrieve"></div>
+            <div class="seg rerank" id="seg-rerank"></div>
+            <div class="seg generate" id="seg-generate"></div>
+          </div>
+          <div class="wf-legend" id="wf-legend">
+            <span id="lg-embed"><i style="background:#6366f1"></i>embed</span>
+            <span id="lg-retrieve"><i style="background:#14b8a6"></i>retrieve</span>
+            <span id="lg-rerank"><i style="background:#0ea5e9"></i>rerank</span>
+            <span id="lg-generate"><i style="background:rgba(99,102,241,0.34)"></i>generate</span>
+            <span class="wf-total" id="wf-total">—</span>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="card">
+          <div class="card-head">
+            <span class="label">Retrieved passages</span>
+            <span class="pill working" id="passage-count">top-k</span>
+          </div>
+          <div id="passages"></div>
+        </div>
+
+        <div class="card" id="json-card">
+          <div class="card-head"><span class="label">API contract — <code style="font-family:var(--mono);font-size:10px">POST /query</code></span></div>
+          <pre id="json-pre"></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="roadmap">
+      <span class="ph done"><i></i>0 Foundations</span>
+      <span class="ph done"><i></i>1 Ingestion</span>
+      <span class="ph now"><i></i>2 Eval harness</span>
+      <span class="ph"><i></i>3 ANN retrieval</span>
+      <span class="ph"><i></i>4 Hybrid</span>
+      <span class="ph"><i></i>5 Rerank</span>
+      <span class="ph"><i></i>6 Generation</span>
+      <span class="ph"><i></i>7 Multi-hop</span>
+      <span class="ph"><i></i>8 Serving</span>
+      <span class="ph"><i></i>9 Cloud</span>
+    </div>
+    <p class="disclaimer">
+      Every passage, score and answer on this page is a <b>placeholder</b> — the UX contract for the real system.<br>
+      This UI gets wired to <code>FastAPI /query</code> in Phase 8. The ablation switches above mirror the real eval ablations:<br>
+      hybrid off ≈ <code>−0.12 nDCG@10</code> · multi-hop off ≈ <code>−15 EM on HotpotQA</code> · threshold too low ≈ hallucinations escape.
+    </p>
+  </footer>
+</div>
+
+<div id="tooltip"></div>
+
+<script>
+"use strict";
+
+/* ───────── settings state ───────── */
+const settings = { hybrid: true, multihop: true, threshold: 0.55 };
+let lastQuery = "";
+
+/* ───────── demo builders — every run is derived from settings ───────── */
+
+const SKY_PASSAGES = [
+  { t: "Rayleigh scattering", s: "Rayleigh scattering is the scattering of light by particles much smaller than the wavelength of the radiation. The intensity of scattered light varies inversely with the fourth power of the wavelength, so shorter (blue) wavelengths are scattered much more strongly than longer (red) ones…", d: 0.87, b: 14.2, r: 0.97 },
+  { t: "Diffuse sky radiation", s: "Diffuse sky radiation is solar radiation reaching the Earth's surface after having been scattered by molecules in the atmosphere. Of the visible wavelengths, blue light is scattered most efficiently, which is why the clear daytime sky appears blue when viewed away from the sun…", d: 0.84, b: 11.8, r: 0.94 },
+  { t: "Sunset", s: "During sunset, sunlight traverses a much longer path through the atmosphere. Most short-wavelength blue light is scattered out of the line of sight before reaching the observer, leaving the longer red and orange wavelengths to dominate the sky's appearance…", d: 0.79, b: 9.1, r: 0.88 },
+  { t: "Atmosphere of Earth", s: "The atmosphere of Earth is composed primarily of nitrogen (78%) and oxygen (21%). These molecules are far smaller than the wavelength of visible light, placing atmospheric scattering firmly in the Rayleigh regime…", d: 0.76, b: 8.7, r: 0.71 },
+];
+
+function buildSky(s) {
+  const passages = s.hybrid
+    ? SKY_PASSAGES
+    : [SKY_PASSAGES[0], SKY_PASSAGES[2], SKY_PASSAGES[1], SKY_PASSAGES[3]].map(p => ({ ...p, b: null }));
+  return {
+    mode: "grounded", faith: s.hybrid ? 96 : 93,
+    passages,
+    answer: "The sky appears blue because of **Rayleigh scattering** — the scattering of sunlight by gas molecules in Earth's atmosphere [1]. The intensity of this scattering is proportional to 1/λ⁴, so shorter blue wavelengths (~450 nm) scatter far more strongly than longer red ones [1]. When you look at the daytime sky away from the sun, you are seeing this scattered blue light arriving from every direction [" + (s.hybrid ? 2 : 3) + "]. At sunset the light's path through the atmosphere is much longer, so most of the blue has already been scattered away — which is why the horizon turns red and orange instead [" + (s.hybrid ? 3 : 2) + "].",
+    trace: [
+      { stage: "embed", l: "Embed query", sub: "bge-small-en-v1.5 · 384d", ms: 8 },
+      s.hybrid
+        ? { stage: "retrieve", l: "Retrieve top-20", sub: "hybrid: FAISS HNSW + BM25 → RRF fusion", ms: 4 }
+        : { stage: "retrieve", l: "Retrieve top-20 (dense only)", sub: "⚠ BM25 disabled — exact-term matches may be missed (−0.12 nDCG@10 in evals)", ms: 3, warn: true },
+      { stage: "rerank", l: "Rerank 20 → 4", sub: "cross-encoder bge-reranker", ms: 23 },
+      { stage: "verify", l: "Verify evidence", sub: "max rerank score 0.97 ≥ threshold " + s.threshold.toFixed(2) + " ✓", ms: 1, reflect: true },
+      { stage: "generate", l: "Generate answer", sub: "claude-sonnet · streaming, citations enforced", ms: 580 },
+    ],
+    lat: { embed: 8, retrieve: s.hybrid ? 4 : 3, rerank: 23, generate: 580 },
+    claims: [
+      { ok: true, refs: [1], text: "Blue light scatters **far more strongly than red** (intensity ∝ 1/λ⁴)" },
+      { ok: true, refs: [s.hybrid ? 2 : 3], text: "Daytime sky color is **scattered sunlight** seen away from the sun" },
+      { ok: true, refs: [s.hybrid ? 3 : 2], text: "Sunsets are red because the **longer path scatters blue away** first" },
+    ],
+  };
+}
+
+function buildEiffel(s) {
+  if (!s.multihop) {
+    return {
+      mode: "abstain",
+      passages: [
+        { t: "Eiffel Tower", s: "The Eiffel Tower is a wrought-iron lattice tower on the Champ de Mars in Paris, France. It is named after the engineer Gustave Eiffel, whose company designed and built the tower for the 1889 World's Fair…", d: 0.91, b: 16.8, r: 0.98 },
+        { t: "Champ de Mars", s: "The Champ de Mars is a large public greenspace in Paris, France, located in the seventh arrondissement, between the Eiffel Tower to the northwest and the École Militaire to the southeast…", d: 0.52, b: 6.1, r: 0.41, low: true },
+        { t: "Gustave Eiffel", s: "Alexandre Gustave Eiffel was a French civil engineer. A graduate of École Centrale des Arts et Manufactures, he made his name with various bridges for the French railway network…", d: 0.49, b: 5.8, r: 0.38, low: true },
+      ],
+      answer: "ABSTAIN::Single-shot retrieval found **where the Eiffel Tower is** [1] — but no retrieved passage states the **capital of France**, so the bridge fact is missing and the system declines to guess. Re-enable **multi-hop** and ask again: the agent will notice the gap, rewrite the sub-query, and retrieve the missing hop. This exact ablation is worth **+15 EM on HotpotQA**.",
+      trace: [
+        { stage: "embed", l: "Embed query", sub: "bge-small-en-v1.5 · 384d", ms: 8 },
+        { stage: "retrieve", l: "Retrieve top-20 (single-shot)", sub: "⚠ multi-hop disabled — one retrieval round only", ms: 5, warn: true },
+        { stage: "rerank", l: "Rerank 20 → 3", sub: "cross-encoder bge-reranker", ms: 24 },
+        { stage: "verify", l: "Verify evidence", sub: "question asks for a capital — no passage evidences it ✗ (can't bridge hops)", ms: 2, reflect: true, fail: true },
+        { stage: "generate", l: "Generate answer", sub: "skipped — abstention instead of a guess", ms: 0, skipped: true },
+      ],
+      lat: { embed: 8, retrieve: 5, rerank: 24, generate: 0 },
+      claims: [
+        { ok: true, refs: [1], text: "The Eiffel Tower is on the **Champ de Mars in Paris, France**" },
+        { ok: false, refs: [], text: "**Capital of France** — required to answer, but unevidenced in retrieved set", note: "single-shot retrieval cannot bridge two-hop questions" },
+      ],
+    };
+  }
+  return {
+    mode: "grounded", faith: 94,
+    passages: [
+      { t: "Eiffel Tower", s: "The Eiffel Tower is a wrought-iron lattice tower on the Champ de Mars in Paris, France. It is named after the engineer Gustave Eiffel, whose company designed and built the tower for the 1889 World's Fair…", d: 0.91, b: 16.8, r: 0.98, hop: 1 },
+      { t: "France", s: "France, officially the French Republic, is a country located primarily in Western Europe. Its capital and largest city is Paris, which is also the country's principal cultural and commercial centre…", d: 0.83, b: 12.4, r: 0.95, hop: 2 },
+      { t: "Paris", s: "Paris is the capital and largest city of France. With an official population of over two million residents, it has been one of Europe's major centres of finance, diplomacy, commerce, culture and science since the 17th century…", d: 0.81, b: 11.6, r: 0.93, hop: 2 },
+    ],
+    answer: "The Eiffel Tower stands on the Champ de Mars in **Paris, France** [1]. The capital of France is **Paris** [2][3] — so the capital of the country where the Eiffel Tower is located is **Paris**.",
+    trace: [
+      { stage: "embed", l: "Embed query", sub: "bge-small-en-v1.5 · 384d", ms: 8 },
+      { stage: "retrieve", l: "Hop 1 — retrieve top-20", sub: "best evidence: “Eiffel Tower” (rerank 0.98)", ms: 5 },
+      { stage: "verify", l: "Reflect", sub: "tower is in France — but capital not yet evidenced → spawn second hop", ms: 410, reflect: true },
+      { stage: "retrieve", l: "Hop 2 — retrieve “capital of France”", sub: "rewritten sub-query · hybrid retrieval", ms: 5 },
+      { stage: "rerank", l: "Rerank 40 → 3", sub: "cross-encoder over both hops", ms: 31 },
+      { stage: "verify", l: "Verify evidence", sub: "both hops grounded · max rerank 0.98 ≥ " + s.threshold.toFixed(2) + " ✓", ms: 1, reflect: true },
+      { stage: "generate", l: "Generate answer", sub: "claude-sonnet · citations from both hops", ms: 520 },
+    ],
+    lat: { embed: 8, retrieve: 10, rerank: 31, generate: 930 },
+    claims: [
+      { ok: true, refs: [1], text: "The Eiffel Tower is on the **Champ de Mars in Paris, France**" },
+      { ok: true, refs: [2, 3], text: "**Paris is the capital** of France" },
+    ],
+  };
+}
+
+function buildWorldCup(s) {
+  const passages = [
+    { t: "FIFA World Cup", s: "The FIFA World Cup is an international association football competition between the senior men's national teams of the members of FIFA. The tournament has been held every four years since the inaugural event in 1930…", d: 0.62, b: 10.3, r: 0.31, low: true },
+    { t: "2026 FIFA World Cup", s: "The 2026 FIFA World Cup will be jointly hosted by 16 cities in three North American countries: Canada, Mexico, and the United States. It will be the first World Cup to feature 48 teams…", d: 0.58, b: 9.7, r: 0.27, low: true },
+    { t: "List of FIFA World Cup finals", s: "The FIFA World Cup final is the last match of the competition. The most recent final listed in this corpus snapshot took place prior to the December 2025 dump date…", d: 0.55, b: 8.2, r: 0.22, low: true },
+  ];
+  if (s.threshold > 0.31) {
+    return {
+      mode: "abstain", passages,
+      answer: "ABSTAIN::I can't answer this from the corpus. The 2031 FIFA World Cup post-dates this Wikipedia snapshot (December 2025), and the best retrieved evidence scored **0.31** — below the abstention threshold of **" + s.threshold.toFixed(2) + "**. Rather than guess, the system declines to answer. *(Drag the threshold below 0.31 to see why this gate matters.)*",
+      trace: [
+        { stage: "embed", l: "Embed query", sub: "bge-small-en-v1.5 · 384d", ms: 8 },
+        { stage: "retrieve", l: "Retrieve top-20", sub: "hybrid: FAISS HNSW + BM25 → RRF fusion", ms: 4 },
+        { stage: "rerank", l: "Rerank 20 → 3", sub: "cross-encoder bge-reranker", ms: 24 },
+        { stage: "verify", l: "Verify evidence", sub: "max rerank 0.31 < threshold " + s.threshold.toFixed(2) + " ✗ — abstaining", ms: 1, reflect: true, fail: true },
+        { stage: "generate", l: "Generate answer", sub: "skipped — abstention saves the LLM call entirely", ms: 0, skipped: true },
+      ],
+      lat: { embed: 8, retrieve: 4, rerank: 24, generate: 0 },
+      claims: [
+        { ok: false, refs: [], text: "**Winner of the 2031 World Cup** — no supporting evidence in corpus", note: "best evidence 0.31 · event beyond snapshot date" },
+      ],
+    };
+  }
+  return {
+    mode: "unfaithful", passages,
+    answer: "DANGER::Argentina won the 2031 FIFA World Cup, defeating France 4–2 on penalties in the final [1]. It was their fourth title overall [2].",
+    trace: [
+      { stage: "embed", l: "Embed query", sub: "bge-small-en-v1.5 · 384d", ms: 8 },
+      { stage: "retrieve", l: "Retrieve top-20", sub: "hybrid: FAISS HNSW + BM25 → RRF fusion", ms: 4 },
+      { stage: "rerank", l: "Rerank 20 → 3", sub: "cross-encoder bge-reranker", ms: 24 },
+      { stage: "verify", l: "Verify evidence", sub: "⚠ max rerank 0.31 ≥ threshold " + s.threshold.toFixed(2) + " — gate passed because the threshold is too permissive", ms: 1, reflect: true, warn: true },
+      { stage: "generate", l: "Generate answer", sub: "the LLM extrapolates beyond its evidence — watch the claim check below", ms: 540 },
+    ],
+    lat: { embed: 8, retrieve: 4, rerank: 24, generate: 540 },
+    claims: [
+      { ok: false, refs: [1], text: "“Argentina won the 2031 World Cup” — **no passage mentions a 2031 tournament**", note: "citation [1] is a generic World Cup article — it does not support the claim" },
+      { ok: false, refs: [2], text: "“4–2 on penalties, fourth title” — **fabricated details**", note: "this is exactly the hallucination the 0.55 threshold exists to block" },
+    ],
+  };
+}
+
+function buildGeneric() {
+  return {
+    mode: "placeholder", passages: null,
+    answer: "PLACEHOLDER::This is a **mock response** — there is no backend behind this page yet. Retrieval lands in Phase 3, reranking in Phase 5, generation in Phase 6, and the agentic loop in Phase 7. Try the three example queries to see the full simulated experience — then flip the **ablation switches** and run them again: hybrid off degrades retrieval, multi-hop off breaks the bridge question, and a permissive threshold lets a hallucination through.",
+    trace: [
+      { stage: "embed", l: "Embed query", sub: "bge-small-en-v1.5 · 384d", ms: 8 },
+      { stage: "retrieve", l: "Retrieve top-20", sub: "⚠ placeholder — FAISS index not built yet (Phase 3)", ms: 4, warn: true },
+      { stage: "rerank", l: "Rerank 20 → 5", sub: "⚠ placeholder — reranker arrives in Phase 5", ms: 23, warn: true },
+      { stage: "verify", l: "Verify evidence", sub: "⚠ placeholder — eval harness is Phase 2 (in progress)", ms: 1, warn: true, reflect: true },
+      { stage: "generate", l: "Generate answer", sub: "⚠ placeholder — generation arrives in Phase 6", ms: 450 },
+    ],
+    lat: { embed: 8, retrieve: 4, rerank: 23, generate: 450 },
+    claims: [],
+  };
+}
+
+const DEMOS = {
+  "why is the sky blue?": buildSky,
+  "what is the capital of the country where the eiffel tower is located?": buildEiffel,
+  "who won the 2031 fifa world cup?": buildWorldCup,
+};
+
+/* ───────── budgets (ms) — the SLO story ───────── */
+const BUDGETS = { embed: 15, retrieve: 10, rerank: 50, generate: 725, total: 800 };
+
+/* ───────── tiny DOM helpers ───────── */
+const $ = id => document.getElementById(id);
+const fmt = n => n.toLocaleString("en-US");
+
+let runToken = 0;
+const timers = [];
+function sched(fn, ms, token) {
+  timers.push(setTimeout(() => { if (token === runToken) fn(); }, ms));
+}
+
+/* ───────── animated header counters ───────── */
+document.querySelectorAll("[data-count]").forEach(el => {
+  const target = +el.dataset.count, t0 = performance.now(), dur = 1400;
+  (function step(now) {
+    const p = Math.min(1, (now - t0) / dur), ease = 1 - Math.pow(1 - p, 3);
+    el.textContent = fmt(Math.round(target * ease));
+    if (p < 1) requestAnimationFrame(step);
+  })(t0);
+});
+
+/* ───────── settings wiring ───────── */
+function bindToggle(id, key) {
+  $(id).addEventListener("click", () => {
+    settings[key] = !settings[key];
+    $(id).classList.toggle("on", settings[key]);
+    $(id).setAttribute("aria-pressed", settings[key]);
+    if (lastQuery) ask(lastQuery);
+  });
+}
+bindToggle("t-hybrid", "hybrid");
+bindToggle("t-multihop", "multihop");
+$("t-thresh").addEventListener("input", e => {
+  settings.threshold = +e.target.value / 100;
+  $("thresh-val").textContent = settings.threshold.toFixed(2);
+});
+$("t-thresh").addEventListener("change", () => { if (lastQuery) ask(lastQuery); });
+
+/* ───────── query history (localStorage) ───────── */
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem("rag-history") || "[]"); } catch { return []; }
+}
+function renderHistory() {
+  const h = loadHistory(), box = $("history");
+  box.innerHTML = "";
+  if (!h.length) { box.classList.remove("show"); return; }
+  box.classList.add("show");
+  const lbl = document.createElement("span");
+  lbl.className = "h-label"; lbl.textContent = "Recent";
+  box.appendChild(lbl);
+  h.slice(0, 4).forEach(q => {
+    const b = document.createElement("button");
+    b.className = "hchip"; b.textContent = q; b.title = q;
+    b.addEventListener("click", () => { $("q").value = q; ask(q); });
+    box.appendChild(b);
+  });
+}
+function pushHistory(q) {
+  const h = loadHistory().filter(x => x !== q);
+  h.unshift(q);
+  localStorage.setItem("rag-history", JSON.stringify(h.slice(0, 8)));
+  renderHistory();
+}
+renderHistory();
+
+/* ───────── render: answer markdown-lite ───────── */
+function md(text) {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
+    .replace(/\*(.+?)\*/g, "<i>$1</i>")
+    .replace(/\[(\d+)\]/g, '<sup class="cite" data-ref="$1">$1</sup>');
+}
+
+/* ───────── citation tooltips + glow ───────── */
+const tooltip = $("tooltip");
+function wireCitations(run) {
+  document.querySelectorAll(".cite").forEach(c => {
+    const ref = +c.dataset.ref;
+    const target = document.querySelector('.passage[data-num="' + ref + '"]');
+    const p = run.passages && run.passages[ref - 1];
+    c.addEventListener("mouseenter", e => {
+      if (target) target.classList.add("glow");
+      if (p) {
+        tooltip.innerHTML = "<b>[" + ref + "] " + p.t + "</b>" + p.s.slice(0, 140) + "…";
+        tooltip.classList.add("show");
+        positionTooltip(e);
+      }
+    });
+    c.addEventListener("mousemove", positionTooltip);
+    c.addEventListener("mouseleave", () => {
+      if (target) target.classList.remove("glow");
+      tooltip.classList.remove("show");
+    });
+    c.addEventListener("click", () => target && target.scrollIntoView({ block: "center", behavior: "smooth" }));
+  });
+}
+function positionTooltip(e) {
+  const pad = 14, w = tooltip.offsetWidth, h = tooltip.offsetHeight;
+  let x = e.clientX + pad, y = e.clientY + pad;
+  if (x + w > innerWidth - 8) x = e.clientX - w - pad;
+  if (y + h > innerHeight - 8) y = e.clientY - h - pad;
+  tooltip.style.left = x + "px"; tooltip.style.top = y + "px";
+}
+
+/* ───────── render: passages ───────── */
+function scoreBar(label, val, max, low, na) {
+  const pct = na ? 0 : Math.min(100, (val / max) * 100);
+  return '<div class="sb' + (low ? " low" : "") + (na ? " na" : "") + '">' +
+    '<div class="sb-top"><span>' + label + "</span><b>" + (na ? "—" : val.toFixed(label === "bm25" ? 1 : 2)) + "</b></div>" +
+    '<div class="rail"><div class="fillb" style="width:0" data-w="' + pct + '"></div></div></div>';
+}
+function showPassages(passages, token) {
+  const box = $("passages");
+  if (!passages) {
+    box.innerHTML = '<div class="skeleton"></div>'.repeat(4);
+    $("passage-count").textContent = "awaiting backend";
+    return;
+  }
+  $("passage-count").textContent = "top-" + passages.length;
+  passages.forEach((p, idx) => {
+    const div = document.createElement("div");
+    div.className = "passage";
+    div.dataset.num = idx + 1;
+    div.innerHTML =
+      '<div class="ptitle"><span class="pnum">' + (idx + 1) + "</span>" + p.t +
+      (p.hop ? ' <span class="tag hop">HOP ' + p.hop + "</span>" : "") + "</div>" +
+      '<div class="snippet">' + p.s + "</div>" +
+      '<div class="scorebars">' +
+        scoreBar("dense", p.d, 1, false, false) +
+        scoreBar("bm25", p.b ?? 0, 20, false, p.b == null) +
+        scoreBar("rerank", p.r, 1, !!p.low, false) +
+      "</div>";
+    box.appendChild(div);
+    sched(() => {
+      div.classList.add("on");
+      div.querySelectorAll(".fillb").forEach(f => { f.style.width = f.dataset.w + "%"; });
+    }, 130 * idx + 80, token);
+  });
+}
+
+/* ───────── render: pipeline strip ───────── */
+function pipelineReset() {
+  document.querySelectorAll(".pnode").forEach(n => {
+    n.className = "pnode";
+    n.querySelector(".pms").textContent = "";
+  });
+}
+function nodeFor(stage) { return document.querySelector('.pnode[data-stage="' + stage + '"]'); }
+
+/* ───────── render: trace + pipeline sync ───────── */
+function runTrace(steps, token, onDone) {
+  const ul = $("trace");
+  const stageMs = {};
+  let t = 120;
+  steps.forEach((s, idx) => {
+    const li = document.createElement("li");
+    li.className = s.reflect ? "reflect" : "";
+    li.innerHTML =
+      '<span class="icon"></span>' +
+      '<span class="step-label">' + s.l + "<small>" + s.sub + "</small></span>" +
+      '<span class="ms">' + (s.skipped ? "skipped" : s.ms + " ms") + "</span>";
+    ul.appendChild(li);
+
+    sched(() => {
+      li.classList.add("on", "running");
+      const node = nodeFor(s.stage);
+      if (node && !node.classList.contains("done")) node.classList.add("active");
+    }, t, token);
+
+    const dur = s.skipped ? 240 : Math.max(280, Math.min(s.ms, 850));
+    t += dur;
+
+    sched(() => {
+      li.classList.remove("running");
+      if (s.warn || s.fail) li.classList.add("warn");
+      li.querySelector(".icon").textContent = s.skipped ? "—" : (s.fail ? "✗" : (s.warn ? "!" : "✓"));
+      const node = nodeFor(s.stage);
+      if (node) {
+        node.classList.remove("active");
+        node.classList.add(s.skipped ? "skip" : (s.fail ? "fail" : "done"));
+        stageMs[s.stage] = (stageMs[s.stage] || 0) + s.ms;
+        node.querySelector(".pms").textContent = s.skipped ? "skipped" : stageMs[s.stage] + " ms";
+      }
+      if (idx === steps.length - 1) onDone();
+    }, t, token);
+    t += 90;
+  });
+}
+
+/* ───────── render: latency waterfall vs budgets ───────── */
+function fillWaterfall(lat) {
+  const total = lat.embed + lat.retrieve + lat.rerank + lat.generate;
+  const keys = ["embed", "retrieve", "rerank", "generate"];
+  let used = 0; const pct = {};
+  keys.forEach(k => { pct[k] = lat[k] === 0 ? 0 : Math.max(4, (lat[k] / total) * 100); used += pct[k]; });
+  keys.forEach(k => {
+    const el = $("seg-" + k);
+    el.style.width = (pct[k] / used * 100) + "%";
+    el.textContent = lat[k] > 0 ? lat[k] + "ms" : "";
+    const lg = $("lg-" + k);
+    const over = lat[k] > BUDGETS[k];
+    lg.classList.toggle("over", over);
+    lg.innerHTML = lg.querySelector("i").outerHTML + k + " " + lat[k] + " / " + BUDGETS[k] + " ms" + (over ? " ⚠" : "");
+  });
+  const overTotal = total > BUDGETS.total;
+  $("wf-total").textContent = "total " + total + " ms / " + BUDGETS.total + " budget" +
+    (lat.generate === 0 ? " · LLM skipped" : (overTotal ? " ⚠ over" : " ✓"));
+  $("wf-total").style.color = overTotal ? "var(--amber)" : "";
+}
+
+/* ───────── render: claims ───────── */
+function showClaims(claims) {
+  const box = $("claims");
+  if (!claims || !claims.length) { box.classList.remove("show"); box.innerHTML = ""; return; }
+  box.innerHTML = '<span class="label">Claim verification</span>' + claims.map(c =>
+    '<div class="claim ' + (c.ok ? "ok" : "bad") + '">' +
+      '<span class="ic">' + (c.ok ? "✓" : "✗") + "</span>" +
+      '<span class="ctext">' + md(c.text).replace(/<sup[^>]*>(\d+)<\/sup>/g, "[$1]") +
+      (c.refs.length ? ' <span class="refs">' + c.refs.map(r => "[" + r + "]").join("") + "</span>" : "") +
+      (c.note ? '<span class="cnote">' + c.note + "</span>" : "") +
+      "</span></div>"
+  ).join("");
+  box.classList.add("show");
+}
+
+/* ───────── render: API contract JSON ───────── */
+function showJson(query, run) {
+  const lat = run.lat;
+  const payload = {
+    query,
+    settings: { hybrid: settings.hybrid, multi_hop: settings.multihop, abstain_threshold: settings.threshold },
+    corpus: { articles: 1000000, chunks: 8797519, embedder: "BAAI/bge-small-en-v1.5", dim: 384 },
+    mode: run.mode,
+    latency_ms: { ...lat, total: lat.embed + lat.retrieve + lat.rerank + lat.generate },
+    passages: run.passages ? run.passages.map((p, i) => ({
+      rank: i + 1, title: p.t, scores: { dense: p.d, bm25: p.b, rerank: p.r }, hop: p.hop ?? 1,
+    })) : "placeholder",
+    answer: {
+      text: run.answer.replace(/^(ABSTAIN|DANGER|PLACEHOLDER)::/, "").replace(/\*\*/g, "").slice(0, 120) + "…",
+      faithfulness: run.faith ?? null,
+      claims: run.claims.map(c => ({ grounded: c.ok, citations: c.refs })),
+    },
+    mock: true,
+  };
+  const json = JSON.stringify(payload, null, 2)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/"([^"]+)":/g, '<span class="jk">"$1"</span>:')
+    .replace(/: "([^"]*)"/g, ': <span class="js">"$1"</span>')
+    .replace(/: (-?\d+\.?\d*)/g, ': <span class="jn">$1</span>')
+    .replace(/: (true|false|null)/g, ': <span class="jb">$1</span>');
+  $("json-pre").innerHTML = json;
+}
+$("json-btn").addEventListener("click", () => $("json-card").classList.toggle("show"));
+
+/* ───────── copy answer ───────── */
+$("copy-btn").addEventListener("click", () => {
+  const text = $("answer").textContent.trim();
+  navigator.clipboard?.writeText(text).then(() => {
+    $("copy-btn").textContent = "copied ✓";
+    setTimeout(() => { $("copy-btn").textContent = "copy"; }, 1400);
+  });
+});
+
+/* ───────── answer streaming ───────── */
+function streamAnswer(run, token) {
+  let body = run.answer, cls = "";
+  if (body.startsWith("ABSTAIN::")) { body = body.slice(9); cls = "abstain-note"; }
+  if (body.startsWith("DANGER::")) { body = body.slice(8); cls = "danger-note"; }
+  if (body.startsWith("PLACEHOLDER::")) { body = body.slice(13); cls = "abstain-note"; }
+
+  const words = body.split(" ");
+  let i = 0;
+  const el = $("answer");
+  (function step() {
+    if (token !== runToken) return;
+    i++;
+    const html = md(words.slice(0, i).join(" ")) + '<span class="cursor"></span>';
+    el.innerHTML = cls ? '<div class="' + cls + '">' + html + "</div>" : html;
+    if (i < words.length) {
+      timers.push(setTimeout(step, 22 + Math.random() * 26));
+    } else {
+      el.innerHTML = cls ? '<div class="' + cls + '">' + md(body) + "</div>" : md(body);
+      const pill = $("answer-pill");
+      if (run.mode === "abstain") { pill.className = "pill abstained"; pill.textContent = "abstained — low evidence"; }
+      else if (run.mode === "unfaithful") { pill.className = "pill unfaithful"; pill.textContent = "✗ unfaithful — failed claim check"; }
+      else if (run.mode === "placeholder") { pill.className = "pill abstained"; pill.textContent = "placeholder"; }
+      else { pill.className = "pill grounded"; pill.textContent = "grounded · " + run.faith + "% faithful"; }
+      wireCitations(run);
+      showClaims(run.claims);
+    }
+  })();
+}
+
+/* ───────── orchestrator ───────── */
+function ask(q) {
+  q = q.trim();
+  if (!q) return;
+  runToken++;
+  const token = runToken;
+  timers.forEach(clearTimeout); timers.length = 0;
+  lastQuery = q;
+
+  $("trace").innerHTML = "";
+  $("passages").innerHTML = "";
+  $("answer").innerHTML = '<span class="cursor"></span>';
+  $("claims").classList.remove("show");
+  $("answer-pill").className = "pill working";
+  $("answer-pill").textContent = "retrieving…";
+  pipelineReset();
+
+  $("results").classList.add("show");
+  $("results").scrollIntoView({ behavior: "smooth", block: "start" });
+
+  const builder = DEMOS[q.toLowerCase()] || buildGeneric;
+  const run = builder(settings);
+  showJson(q, run);
+  pushHistory(q);
+
+  sched(() => showPassages(run.passages, token), 500, token);
+  runTrace(run.trace, token, () => {
+    fillWaterfall(run.lat);
+    $("answer-pill").textContent = run.lat.generate > 0 ? "generating…" : "deciding…";
+    sched(() => streamAnswer(run, token), 240, token);
+  });
+}
+
+/* ───────── input wiring ───────── */
+$("ask").addEventListener("click", () => ask($("q").value));
+$("q").addEventListener("keydown", e => { if (e.key === "Enter") ask($("q").value); });
+document.querySelectorAll(".chip").forEach(c =>
+  c.addEventListener("click", () => { $("q").value = c.dataset.q; ask(c.dataset.q); })
+);
+document.addEventListener("keydown", e => {
+  if (((e.metaKey || e.ctrlKey) && e.key === "k") || (e.key === "/" && document.activeElement !== $("q"))) {
+    e.preventDefault(); $("q").focus();
+  }
+});
+</script>
+</body>
+</html>

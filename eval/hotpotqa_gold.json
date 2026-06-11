@@ -11,40 +11,48 @@
     "question": "Who was hung for assisting the attempted surrender of a defector from the American Continental Army to the British Army?",
     "answer": "John Andr\u00e9",
     "supporting_titles": [
-      "John Andr\u00e9",
-      "Benedict Arnold"
+      "Benedict Arnold",
+      "John Andr\u00e9"
     ]
   },
   {
     "question": "Which major international airport in south-east England ranks as the 8th busiest airport in Europe and replaced Croydon Airport?",
     "answer": "Gatwick Airport",
     "supporting_titles": [
-      "Gatwick Airport",
-      "Croydon Airport"
+      "Croydon Airport",
+      "Gatwick Airport"
+    ]
+  },
+  {
+    "question": "Which \"Roseanne\" star is in Scream 2?",
+    "answer": "Laurie Metcalf",
+    "supporting_titles": [
+      "Scream 2",
+      "Laurie Metcalf"
     ]
   },
   {
     "question": "Were Halld\u00f3r Laxness and Timothy Leary from the same country?",
     "answer": "no",
     "supporting_titles": [
-      "Halld\u00f3r Laxness",
-      "Timothy Leary"
+      "Timothy Leary",
+      "Halld\u00f3r Laxness"
     ]
   },
   {
     "question": "Which American comedian born on March 21, 1962, appeared in the movie \"Sleepless in Seattle?\"",
     "answer": "Rosie O'Donnell",
     "supporting_titles": [
-      "Sleepless in Seattle",
-      "Rosie O'Donnell"
+      "Rosie O'Donnell",
+      "Sleepless in Seattle"
     ]
   },
   {
     "question": "What is the ratio of flow velocity past a boundary to the local speed of sound for a Saab JAS 39 Gripen?",
     "answer": "2",
     "supporting_titles": [
-      "Saab JAS 39 Gripen",
-      "Mach number"
+      "Mach number",
+      "Saab JAS 39 Gripen"
     ]
   },
   {
@@ -59,8 +67,8 @@
     "question": "In Ancient Egyptian religion how would a citizen be weighted to decide if they where worthy of damnation and would face the torment in the lake of fire ?",
     "answer": "against the feather of truth",
     "supporting_titles": [
-      "Damnation",
-      "Ancient Egyptian religion"
+      "Ancient Egyptian religion",
+      "Damnation"
     ]
   },
   {
@@ -91,8 +99,24 @@
     "question": "Which composer was born earlier, Paul Hindemith or B\u00e9la Bart\u00f3k?",
     "answer": "B\u00e9la Viktor J\u00e1nos Bart\u00f3k",
     "supporting_titles": [
-      "Paul Hindemith",
-      "B\u00e9la Bart\u00f3k"
+      "B\u00e9la Bart\u00f3k",
+      "Paul Hindemith"
+    ]
+  },
+  {
+    "question": "Which university was founded first, University of California, Berkeley or Saint Louis University?",
+    "answer": "Saint Louis University",
+    "supporting_titles": [
+      "University of California, Berkeley",
+      "Saint Louis University"
+    ]
+  },
+  {
+    "question": "Which American actor portray Steve Urkel in \"Family Matters\"",
+    "answer": "Jaleel Ahmad White",
+    "supporting_titles": [
+      "Steve Urkel",
+      "Jaleel White"
     ]
   },
   {
@@ -101,6 +125,22 @@
     "supporting_titles": [
       "Jos\u00e9 Saramago",
       "Ivo Andri\u0107"
+    ]
+  },
+  {
+    "question": "What island is located  808 nmi northwest of the capital of Hawaii?",
+    "answer": "Laysan",
+    "supporting_titles": [
+      "Laysan",
+      "Honolulu"
+    ]
+  },
+  {
+    "question": " The name \"Mountbatten-Windsor\" applies to male-line descendants of the Queen without royal styles and titles which is a Eurpean dynasty resulting in what family?",
+    "answer": "Mountbatten family",
+    "supporting_titles": [
+      "Mountbatten family",
+      "Mountbatten-Windsor"
     ]
   },
   {
@@ -115,16 +155,16 @@
     "question": "In what movie did the male star of a movie about a widowed 37-year-old woman also star in in the year 1993?",
     "answer": "\"Red Rock West\"",
     "supporting_titles": [
-      "Moonstruck",
-      "Nicolas Cage"
+      "Nicolas Cage",
+      "Moonstruck"
     ]
   },
   {
     "question": "Are Northwestern University and Middlebury College both private schools?",
     "answer": "yes",
     "supporting_titles": [
-      "Northwestern University",
-      "Middlebury College"
+      "Middlebury College",
+      "Northwestern University"
     ]
   },
   {
@@ -147,8 +187,16 @@
     "question": "Are Giuseppe Verdi and Ambroise Thomas both Opera composers ?",
     "answer": "yes",
     "supporting_titles": [
-      "Ambroise Thomas",
-      "Giuseppe Verdi"
+      "Giuseppe Verdi",
+      "Ambroise Thomas"
+    ]
+  },
+  {
+    "question": "How many periods in office were held by the British Prime Minister who led the \"Who? Who?\" ministry?",
+    "answer": "3",
+    "supporting_titles": [
+      "Who? Who? ministry",
+      "Edward Smith-Stanley, 14th Earl of Derby"
     ]
   },
   {
@@ -160,11 +208,27 @@
     ]
   },
   {
+    "question": "The Bellagio resort owned by MGM Resorts international is located in which US city?",
+    "answer": "Las Vegas",
+    "supporting_titles": [
+      "Bellagio (resort)",
+      "MGM Resorts International"
+    ]
+  },
+  {
+    "question": "Which was secretary to President Richard Nixon: Rose Mary Woods or H. R. Haldeman?",
+    "answer": "Rose Mary Woods",
+    "supporting_titles": [
+      "Rose Mary Woods",
+      "H. R. Haldeman"
+    ]
+  },
+  {
     "question": "which university was founded first Duke University or Tufts University?",
     "answer": "Duke University",
     "supporting_titles": [
-      "Duke University",
-      "Tufts University"
+      "Tufts University",
+      "Duke University"
     ]
   },
   {
@@ -179,8 +243,8 @@
     "question": "What army did the namesake of the ship launched as the M\u00fcnchen in 1930 fight in during the American Revolutionary War?",
     "answer": "Continental Army",
     "supporting_titles": [
-      "SS General von Steuben",
-      "Friedrich Wilhelm von Steuben"
+      "Friedrich Wilhelm von Steuben",
+      "SS General von Steuben"
     ]
   },
   {
@@ -211,16 +275,16 @@
     "question": "Which long-established US university is older: University of California, Berkeley or Syracuse University?",
     "answer": "University of California, Berkeley",
     "supporting_titles": [
-      "Syracuse University",
-      "University of California, Berkeley"
+      "University of California, Berkeley",
+      "Syracuse University"
     ]
   },
   {
     "question": "Which American musician and songwriter was born earlier, Adam Duritz or Cherie Currie?",
     "answer": "Cherie Ann Currie",
     "supporting_titles": [
-      "Adam Duritz",
-      "Cherie Currie"
+      "Cherie Currie",
+      "Adam Duritz"
     ]
   },
   {
@@ -243,16 +307,24 @@
     "question": "Under Which Stanmore born prime minister was John Gorton a serving minister? ",
     "answer": "Harold Holt",
     "supporting_titles": [
-      "Harold Holt",
-      "John Gorton"
+      "John Gorton",
+      "Harold Holt"
     ]
   },
   {
     "question": "Which university - the University of Rochester or the University of Colorado - is located further east?",
     "answer": "University of Rochester",
     "supporting_titles": [
-      "University of Rochester",
-      "University of Colorado"
+      "University of Colorado",
+      "University of Rochester"
+    ]
+  },
+  {
+    "question": "Was California State University, Dominguez Hills founded before or after Pacific Lutheran University?",
+    "answer": "Pacific Lutheran University (PLU), founded by Norwegian Lutheran pioneers in 1890",
+    "supporting_titles": [
+      "California State University, Dominguez Hills",
+      "Pacific Lutheran University"
     ]
   },
   {
@@ -267,48 +339,48 @@
     "question": "Who was the first Russian composer to make a lasting impression internationally, Alessandro Scarlatti or Pyotr Ilyich Tchaikovsky?",
     "answer": "Pyotr Ilyich Tchaikovsky",
     "supporting_titles": [
-      "Pyotr Ilyich Tchaikovsky",
-      "Alessandro Scarlatti"
+      "Alessandro Scarlatti",
+      "Pyotr Ilyich Tchaikovsky"
     ]
   },
   {
     "question": "Was Vanderbilt University or Emory University founded first?",
     "answer": "Emory University.",
     "supporting_titles": [
-      "Emory University",
-      "Vanderbilt University"
+      "Vanderbilt University",
+      "Emory University"
     ]
   },
   {
     "question": "What was the last date the creator of  the NOI was seen by Elijah Muhammad?",
     "answer": "last seen in 1933",
     "supporting_titles": [
-      "Wallace Fard Muhammad",
-      "Nation of Islam"
+      "Nation of Islam",
+      "Wallace Fard Muhammad"
     ]
   },
   {
     "question": "What band formed in 1995 and came out with an album called \"Welcome Interstate Managers'?",
     "answer": "Fountains of Wayne",
     "supporting_titles": [
-      "Stacy's Mom",
-      "Fountains of Wayne"
+      "Fountains of Wayne",
+      "Stacy's Mom"
     ]
   },
   {
     "question": "Who voices Homer Simpson's character on the animated television series? ",
     "answer": "Daniel Louis Castellaneta",
     "supporting_titles": [
-      "Dan Castellaneta",
-      "Homer Simpson"
+      "Homer Simpson",
+      "Dan Castellaneta"
     ]
   },
   {
     "question": "Between Joe Orton and Henry James, which author is the adjective \"Ortonesque\" used to refer to his work?",
     "answer": "John Kingsley \"Joe\" Orton",
     "supporting_titles": [
-      "Henry James",
-      "Joe Orton"
+      "Joe Orton",
+      "Henry James"
     ]
   },
   {
@@ -323,32 +395,32 @@
     "question": "A guitar player called Noodles is a longtime member of which band, The Smashing Pumpkins or The Offspring?",
     "answer": "The Offspring",
     "supporting_titles": [
-      "The Smashing Pumpkins",
-      "The Offspring"
+      "The Offspring",
+      "The Smashing Pumpkins"
     ]
   },
   {
     "question": "Which university is further North,  University of New Hampshire or Stony Brook University?",
     "answer": "Stony Brook University",
     "supporting_titles": [
-      "Stony Brook University",
-      "University of New Hampshire"
+      "University of New Hampshire",
+      "Stony Brook University"
     ]
   },
   {
     "question": "Which player is from Brazil, Jimmy Connors or Maria Bueno?",
     "answer": "Maria Esther Andion Bueno",
     "supporting_titles": [
-      "Jimmy Connors",
-      "Maria Bueno"
+      "Maria Bueno",
+      "Jimmy Connors"
     ]
   },
   {
     "question": "Did both Anthony Burgess and Tennessee Williams use pen names?",
     "answer": "no",
     "supporting_titles": [
-      "Anthony Burgess",
-      "Tennessee Williams"
+      "Tennessee Williams",
+      "Anthony Burgess"
     ]
   },
   {
@@ -371,8 +443,32 @@
     "question": "During what months of the 2003 invasion of the Iraq were the media outlets accused of having a pro war basis?",
     "answer": "20 March to 1 May 2003",
     "supporting_titles": [
-      "2003 invasion of Iraq",
-      "Media coverage of the Iraq War"
+      "Media coverage of the Iraq War",
+      "2003 invasion of Iraq"
+    ]
+  },
+  {
+    "question": "What are the subdivisions of Neringa Municipality called in English?",
+    "answer": "elderships",
+    "supporting_titles": [
+      "Municipalities of Lithuania",
+      "Neringa Municipality"
+    ]
+  },
+  {
+    "question": "Kresy, which roughly was a part of the land beyond the so-called Curson Line, was drawn for what reason?",
+    "answer": "demarcation line between the newly emerging states, the Second Polish Republic, and the Soviet Union",
+    "supporting_titles": [
+      "Curzon Line",
+      "Kresy"
+    ]
+  },
+  {
+    "question": "Are Stephen Frears and Jan \u0160vankmajer from the same country?",
+    "answer": "no",
+    "supporting_titles": [
+      "Stephen Frears",
+      "Jan \u0160vankmajer"
     ]
   },
   {
@@ -395,8 +491,8 @@
     "question": "Which Royal Air Force is located in a town that had a population of 2,841 on 15 April 2012?",
     "answer": "Mount Pleasant",
     "supporting_titles": [
-      "RAF Mount Pleasant",
-      "Stanley, Falkland Islands"
+      "Stanley, Falkland Islands",
+      "RAF Mount Pleasant"
     ]
   },
   {
@@ -419,8 +515,24 @@
     "question": "Which of these universities, Northwestern University or Johns Hopkins University, have a campus outside of the United States territories?",
     "answer": "with other campuses located in Chicago and Doha, Qatar",
     "supporting_titles": [
-      "Northwestern University",
-      "Johns Hopkins University"
+      "Johns Hopkins University",
+      "Northwestern University"
+    ]
+  },
+  {
+    "question": "In which branch of the U.S. military did the man who Robert Conrad portrayed in the television series \"Baa Baa Black Sheep\" serve?",
+    "answer": "Marine Corps",
+    "supporting_titles": [
+      "Robert Conrad",
+      "Pappy Boyington"
+    ]
+  },
+  {
+    "question": "Which magazine was created first, Macworld or Soaps In Depth?",
+    "answer": "Macworld",
+    "supporting_titles": [
+      "Macworld",
+      "Soaps In Depth"
     ]
   },
   {
@@ -435,8 +547,8 @@
     "question": "Which is a university in Pennsylvania, University of New Haven or Carnegie Mellon University?",
     "answer": "Carnegie Mellon University",
     "supporting_titles": [
-      "Carnegie Mellon University",
-      "University of New Haven"
+      "University of New Haven",
+      "Carnegie Mellon University"
     ]
   },
   {
@@ -456,27 +568,43 @@
     ]
   },
   {
+    "question": "What superhero is followed in the American comic book series that started as a horror comics anthology and introduced the fictional realm based on Norse mythology?",
+    "answer": "Thor",
+    "supporting_titles": [
+      "Journey into Mystery",
+      "Asgard (comics)"
+    ]
+  },
+  {
     "question": "Which university is a private research university, University of California, Berkeley or Brown University?",
     "answer": "Brown University",
     "supporting_titles": [
-      "Brown University",
-      "University of California, Berkeley"
+      "University of California, Berkeley",
+      "Brown University"
     ]
   },
   {
     "question": "In what year was the narrator of \"Blackadder's Christmas Carol\" born?",
     "answer": "1959",
     "supporting_titles": [
-      "Hugh Laurie",
-      "Blackadder's Christmas Carol"
+      "Blackadder's Christmas Carol",
+      "Hugh Laurie"
+    ]
+  },
+  {
+    "question": "Which band has more members, The Futureheads or Marcy Playground?",
+    "answer": "The Futureheads",
+    "supporting_titles": [
+      "The Futureheads",
+      "Marcy Playground"
     ]
   },
   {
     "question": "When was the American patriot Hamilton, New York Wass named after born?",
     "answer": "January 11, 1755 or 1757July",
     "supporting_titles": [
-      "Hamilton, New York",
-      "Alexander Hamilton"
+      "Alexander Hamilton",
+      "Hamilton, New York"
     ]
   },
   {
@@ -496,19 +624,43 @@
     ]
   },
   {
+    "question": "What did the American writer who wrote Into Thin Air  primarily known for in his writings ",
+    "answer": "the outdoors",
+    "supporting_titles": [
+      "Jon Krakauer",
+      "Into Thin Air"
+    ]
+  },
+  {
     "question": "Were Gregory La Cava and Mike Judge both actors? ",
     "answer": "no",
     "supporting_titles": [
-      "Gregory La Cava",
-      "Mike Judge"
+      "Mike Judge",
+      "Gregory La Cava"
     ]
   },
   {
     "question": "Who had more stable members of their band, X or The La's?",
     "answer": "X",
     "supporting_titles": [
-      "The La's",
-      "X (American band)"
+      "X (American band)",
+      "The La's"
+    ]
+  },
+  {
+    "question": "What sibling of John D. Rockefeller III was the chairman of Chase Manhattan Corporation?",
+    "answer": "David Rockefeller",
+    "supporting_titles": [
+      "John D. Rockefeller III",
+      "David Rockefeller"
+    ]
+  },
+  {
+    "question": "Mikael \u00c5kerfeldt and Lee Ranaldo were this kind of instrumentalist in their respective bands. ",
+    "answer": "Guitarists",
+    "supporting_titles": [
+      "Lee Ranaldo",
+      "Mikael \u00c5kerfeldt"
     ]
   },
   {
@@ -520,11 +672,35 @@
     ]
   },
   {
+    "question": "Although Michael Fincke's record was broken by Scott Kelly, commander of the International Space Station (ISS) on Expeditions 26, 45, and 46, what was his record for the most time in space?",
+    "answer": "381.6 days",
+    "supporting_titles": [
+      "Michael Fincke",
+      "Scott Kelly (astronaut)"
+    ]
+  },
+  {
     "question": "Which is the busiest airport in the United Kingdom outside of London?",
     "answer": "Gatwick Airport",
     "supporting_titles": [
-      "Gatwick Airport",
-      "Heathrow Airport"
+      "Heathrow Airport",
+      "Gatwick Airport"
+    ]
+  },
+  {
+    "question": "Aleksandr Dugin, the father of fascism, came to prominence during which era in Russia?",
+    "answer": "20th-century",
+    "supporting_titles": [
+      "Fascism",
+      "Aleksandr Dugin"
+    ]
+  },
+  {
+    "question": "North American Aviation was the company that created what single-engined training aircraft?",
+    "answer": "North American Aviation T-6 Texan",
+    "supporting_titles": [
+      "North American Aviation",
+      "North American T-6 Texan"
     ]
   },
   {
@@ -544,6 +720,30 @@
     ]
   },
   {
+    "question": "Siegfriedstellung in the First World War was a defensive position of what country's army?",
+    "answer": "German",
+    "supporting_titles": [
+      "Siegfried Line",
+      "Hindenburg Line"
+    ]
+  },
+  {
+    "question": "What did Felix Salten originally title his most famous work?",
+    "answer": "Bambi: Eine Lebensgeschichte aus dem Walde",
+    "supporting_titles": [
+      "Bambi, a Life in the Woods",
+      "Felix Salten"
+    ]
+  },
+  {
+    "question": "Which two occupations does Ronnie Dunn and Annie Lennox have in common?",
+    "answer": "singer, songwriter",
+    "supporting_titles": [
+      "Annie Lennox",
+      "Ronnie Dunn"
+    ]
+  },
+  {
     "question": "Which writer also enjoyed boxing, Amy Tan or Norman Lindsay?",
     "answer": "Norman Alfred William Lindsay",
     "supporting_titles": [
@@ -557,6 +757,14 @@
     "supporting_titles": [
       "Erving Goffman",
       "Michel Foucault"
+    ]
+  },
+  {
+    "question": "Who was born earlier, Emma Bull or Virginia Woolf?",
+    "answer": "Adeline Virginia Woolf",
+    "supporting_titles": [
+      "Virginia Woolf",
+      "Emma Bull"
     ]
   },
   {
@@ -576,11 +784,27 @@
     ]
   },
   {
+    "question": "What German medium tank, sometimes called the \"Mark V\", that was deployed on the Eastern and Western fronts from mid-1943 provided the armor and suspension for the chassis of the tank destroyer built by Nazi Germany during World War II?",
+    "answer": "The Panther",
+    "supporting_titles": [
+      "Jagdpanther",
+      "Panther tank"
+    ]
+  },
+  {
+    "question": "Is Ohio State University or California State University, Dominguez Hills further west?",
+    "answer": "California State University, Dominguez Hills",
+    "supporting_titles": [
+      "Ohio State University",
+      "California State University, Dominguez Hills"
+    ]
+  },
+  {
     "question": "What is the chemical formula of the organic material that clementines have less of than oranges?",
     "answer": "CHO",
     "supporting_titles": [
-      "Clementine",
-      "Citric acid"
+      "Citric acid",
+      "Clementine"
     ]
   },
   {
@@ -592,11 +816,27 @@
     ]
   },
   {
+    "question": "John Rhys-Davies played General Pushkin in the Bond Film that starred whom as James Bond?",
+    "answer": "Timothy Dalton",
+    "supporting_titles": [
+      "The Living Daylights",
+      "John Rhys-Davies"
+    ]
+  },
+  {
     "question": "Were H. G. Wells and Rub\u00e9n Dar\u00edo both English?",
     "answer": "no",
     "supporting_titles": [
-      "H. G. Wells",
-      "Rub\u00e9n Dar\u00edo"
+      "Rub\u00e9n Dar\u00edo",
+      "H. G. Wells"
+    ]
+  },
+  {
+    "question": "What movie character was based on the martial arts actor known as JCVD?",
+    "answer": "Mortal Kombat",
+    "supporting_titles": [
+      "Jean-Claude Van Damme",
+      "Johnny Cage"
     ]
   },
   {
@@ -616,19 +856,27 @@
     ]
   },
   {
+    "question": "\"Twenty Two\" is an episode of the series \"The Twilight Zone.\" adapted from an anecdote by a publisher who made appearance in what panel game show?",
+    "answer": "What's My Line",
+    "supporting_titles": [
+      "Bennett Cerf",
+      "Twenty Two (The Twilight Zone)"
+    ]
+  },
+  {
     "question": "Which of the three main psychedelic compounds found in the Psilocybin genus mushroom are converted to psilocin by the body?",
     "answer": "psilocin",
     "supporting_titles": [
-      "Psilocybe",
-      "Psilocybin"
+      "Psilocybin",
+      "Psilocybe"
     ]
   },
   {
     "question": "Which composer was a French Romantic composer in the 1800's, Hector Berlioz or Gaetano Donizetti?",
     "answer": "Louis-Hector Berlioz",
     "supporting_titles": [
-      "Hector Berlioz",
-      "Gaetano Donizetti"
+      "Gaetano Donizetti",
+      "Hector Berlioz"
     ]
   },
   {
@@ -656,11 +904,19 @@
     ]
   },
   {
+    "question": "Which of these battles occurred earlier--the Battle of Peleliu or the Battle of Belleau Wood?",
+    "answer": "The Battle of Belleau Wood",
+    "supporting_titles": [
+      "Battle of Belleau Wood",
+      "Battle of Peleliu"
+    ]
+  },
+  {
     "question": "What is the name of the largest publicly owned company in Minnesota that is situated in Minnesota's most populous county?",
     "answer": "United Healthcare",
     "supporting_titles": [
-      "Minnetonka, Minnesota",
-      "Hennepin County, Minnesota"
+      "Hennepin County, Minnesota",
+      "Minnetonka, Minnesota"
     ]
   },
   {
@@ -675,24 +931,24 @@
     "question": "Which had a bigger population in the 2016 census: Queens or Staten Island?",
     "answer": "Queens",
     "supporting_titles": [
-      "Staten Island",
-      "Queens"
+      "Queens",
+      "Staten Island"
     ]
   },
   {
     "question": "Which country is the Taipa island part of?",
     "answer": "China",
     "supporting_titles": [
-      "Macau",
-      "Taipa"
+      "Taipa",
+      "Macau"
     ]
   },
   {
     "question": "What kind of group does Pinhead Gunpowder and Billie Joe Armstrong have in common?",
     "answer": "band",
     "supporting_titles": [
-      "Billie Joe Armstrong",
-      "Pinhead Gunpowder"
+      "Pinhead Gunpowder",
+      "Billie Joe Armstrong"
     ]
   },
   {
@@ -701,6 +957,14 @@
     "supporting_titles": [
       "Laertes (Hamlet)",
       "Polonius"
+    ]
+  },
+  {
+    "question": "Who was born earlier, Garry Marshall or Leni Riefenstahl?",
+    "answer": "\"Leni\" Riefenstahl",
+    "supporting_titles": [
+      "Garry Marshall",
+      "Leni Riefenstahl"
     ]
   },
   {
@@ -715,16 +979,16 @@
     "question": "When was the federal US law made that was responsible for shutting down Braniff Airways?",
     "answer": "1978",
     "supporting_titles": [
-      "Braniff International Airways",
-      "Airline Deregulation Act"
+      "Airline Deregulation Act",
+      "Braniff International Airways"
     ]
   },
   {
     "question": "Which writer, Karen Blixen or Woody Allen, has a broader range of artistic talents?",
     "answer": "\"Woody\" Allen",
     "supporting_titles": [
-      "Woody Allen",
-      "Karen Blixen"
+      "Karen Blixen",
+      "Woody Allen"
     ]
   },
   {
@@ -747,32 +1011,80 @@
     "question": "Which battle, the Battle of Cold Harbor, or the Second Battle of Bull Run, was fought first?",
     "answer": "Second Battle of Bull Run",
     "supporting_titles": [
-      "Battle of Cold Harbor",
-      "Second Battle of Bull Run"
+      "Second Battle of Bull Run",
+      "Battle of Cold Harbor"
+    ]
+  },
+  {
+    "question": "On which coast can the California Aqueduct and the Lake Washington Ship Canal be found?  ",
+    "answer": "west",
+    "supporting_titles": [
+      "Lake Washington Ship Canal",
+      "California Aqueduct"
+    ]
+  },
+  {
+    "question": "Macclesfield Town F.C. plays in the league sponsored by whom?",
+    "answer": "Vanarama",
+    "supporting_titles": [
+      "National League (division)",
+      "Macclesfield Town F.C."
+    ]
+  },
+  {
+    "question": "What was the home city of the author of the famous novel tracing the life of a male roe deer from his birth onward?",
+    "answer": "Vienna",
+    "supporting_titles": [
+      "Bambi, a Life in the Woods",
+      "Felix Salten"
+    ]
+  },
+  {
+    "question": "In which suburb of Melbourne, Australia did Harold Edward Holt go missing?",
+    "answer": "Portsea, Victoria",
+    "supporting_titles": [
+      "Harold Holt",
+      "Portsea, Victoria"
     ]
   },
   {
     "question": "Which of the former British Leyland companies is best know for it's two-seat open sports cars?",
     "answer": "MG Car Company Limited",
     "supporting_titles": [
-      "MG Cars",
-      "Rover Group"
+      "Rover Group",
+      "MG Cars"
     ]
   },
   {
     "question": "Which is founded by a president, University of Washington or University of Virginia?",
     "answer": "University of Virginia",
     "supporting_titles": [
-      "University of Virginia",
-      "University of Washington"
+      "University of Washington",
+      "University of Virginia"
+    ]
+  },
+  {
+    "question": "Are both Dziga Vertov and Roger Donaldson are involved in the film industry?",
+    "answer": "yes",
+    "supporting_titles": [
+      "Roger Donaldson",
+      "Dziga Vertov"
     ]
   },
   {
     "question": "Are Benjamin Britten and B\u00e9la Bart\u00f3k from the same country?",
     "answer": "no",
     "supporting_titles": [
-      "Benjamin Britten",
-      "B\u00e9la Bart\u00f3k"
+      "B\u00e9la Bart\u00f3k",
+      "Benjamin Britten"
+    ]
+  },
+  {
+    "question": "Worker: What professional title to both Christopher Nolan and Paul Schrader boast?",
+    "answer": "screenwriter",
+    "supporting_titles": [
+      "Paul Schrader",
+      "Christopher Nolan"
     ]
   },
   {
@@ -787,8 +1099,8 @@
     "question": "Where is the ice hockey team based that Zdeno Ch\u00e1ra currently serving as captain of?",
     "answer": "Boston, Massachusetts",
     "supporting_titles": [
-      "Boston Bruins",
-      "Zdeno Ch\u00e1ra"
+      "Zdeno Ch\u00e1ra",
+      "Boston Bruins"
     ]
   },
   {
@@ -811,8 +1123,8 @@
     "question": "A relative of the emu is native to which continent?",
     "answer": "Africa",
     "supporting_titles": [
-      "Emu",
-      "Common ostrich"
+      "Common ostrich",
+      "Emu"
     ]
   },
   {
@@ -840,6 +1152,14 @@
     ]
   },
   {
+    "question": "Macaulay Carson Culkin was regarded as the most successful child actor since which actress, who was Hollywood's number one box-office draw as a child actress from 1935 to 1938?",
+    "answer": "Shirley Temple Black",
+    "supporting_titles": [
+      "Macaulay Culkin",
+      "Shirley Temple"
+    ]
+  },
+  {
     "question": "who had to escape nazis, Sigmund Freud or Evelyn Waugh?",
     "answer": "Sigmund Freud",
     "supporting_titles": [
@@ -864,11 +1184,27 @@
     ]
   },
   {
+    "question": "The standard that defines Svalbard and Jan Mayen is similar to what standard that originated in the United Nations Statistics Division?",
+    "answer": "UN M.49 standard",
+    "supporting_titles": [
+      "ISO 3166-1 numeric",
+      "Svalbard and Jan Mayen"
+    ]
+  },
+  {
+    "question": "Oxley Highway ends at a coastal town that had how many inhabitants in June 2016 ?",
+    "answer": "45,698",
+    "supporting_titles": [
+      "Oxley Highway",
+      "Port Macquarie"
+    ]
+  },
+  {
     "question": "When did the game which held three times in  in East Asia first held ",
     "answer": "in 1896",
     "supporting_titles": [
-      "Summer Olympic Games",
-      "2008 Summer Olympics"
+      "2008 Summer Olympics",
+      "Summer Olympic Games"
     ]
   },
   {
@@ -883,8 +1219,32 @@
     "question": "Are Mina Loy and Raymond Carver both British writers?",
     "answer": "no",
     "supporting_titles": [
-      "Mina Loy",
-      "Raymond Carver"
+      "Raymond Carver",
+      "Mina Loy"
+    ]
+  },
+  {
+    "question": "What was Rosario Dawson of Josie and the Pussycats film debut",
+    "answer": "She made her film debut in the 1995 teen drama \"Kids\".",
+    "supporting_titles": [
+      "Rosario Dawson",
+      "Josie and the Pussycats (film)"
+    ]
+  },
+  {
+    "question": "Which mountain is higher, Nanda Devi or Broad Peak?",
+    "answer": "Broad Peak",
+    "supporting_titles": [
+      "Nanda Devi",
+      "Broad Peak"
+    ]
+  },
+  {
+    "question": "Which aircraft engine powers a General Dynamics aircraft of which over 4500 have been built?",
+    "answer": "Pratt & Whitney F100",
+    "supporting_titles": [
+      "General Dynamics F-16 Fighting Falcon",
+      "Pratt & Whitney F100"
     ]
   },
   {
@@ -896,27 +1256,91 @@
     ]
   },
   {
+    "question": "Does Kurt Cobain and Glenn Frey work in the music industry?",
+    "answer": "yes",
+    "supporting_titles": [
+      "Glenn Frey",
+      "Kurt Cobain"
+    ]
+  },
+  {
+    "question": " Legends of the Fall was based on a novella by what poetry and fiction writer?",
+    "answer": "James Harrison",
+    "supporting_titles": [
+      "Jim Harrison",
+      "Legends of the Fall"
+    ]
+  },
+  {
     "question": "Who is older, Steven Tyler, or Elizabeth Fraser?",
     "answer": "Steven Tyler",
     "supporting_titles": [
-      "Elizabeth Fraser",
-      "Steven Tyler"
+      "Steven Tyler",
+      "Elizabeth Fraser"
     ]
   },
   {
     "question": "What big-budget epic film was released the same year as the film that focuses on a series of sudden, unexplained violent bird attacks?",
     "answer": "Cleopatra",
     "supporting_titles": [
-      "1963 in film",
-      "The Birds (film)"
+      "The Birds (film)",
+      "1963 in film"
+    ]
+  },
+  {
+    "question": "Which American politician who served as United States Senator from 1971 to 1989 was Governor of Florida before Buddy MacKay?",
+    "answer": "Lawton Chiles",
+    "supporting_titles": [
+      "Buddy MacKay",
+      "Lawton Chiles"
+    ]
+  },
+  {
+    "question": "In between Thomas Anders and Micky Dolenz, who was the a vocalist of the Monkees?",
+    "answer": "George Michael Dolenz",
+    "supporting_titles": [
+      "Micky Dolenz",
+      "Thomas Anders"
+    ]
+  },
+  {
+    "question": "Which player for the Chicago American Gears held the record which George Harry Yardley III broke ",
+    "answer": "George Lawrence Mikan, Jr.",
+    "supporting_titles": [
+      "George Mikan",
+      "George Yardley"
+    ]
+  },
+  {
+    "question": "Who produced the 2004 major release sequel of Shrek 2?",
+    "answer": "Andrew Adamson",
+    "supporting_titles": [
+      "Shrek 2",
+      "2004 in film"
     ]
   },
   {
     "question": "Were Cinderella and The Emperor's New Groove released by the same picture company?",
     "answer": "no",
     "supporting_titles": [
-      "The Emperor's New Groove",
-      "Cinderella (1950 film)"
+      "Cinderella (1950 film)",
+      "The Emperor's New Groove"
+    ]
+  },
+  {
+    "question": "Ferrari 360 was replaced by the sports car that debuted at what event?",
+    "answer": "2004 Paris Motor Show",
+    "supporting_titles": [
+      "Ferrari 360",
+      "Ferrari F430"
+    ]
+  },
+  {
+    "question": "Which battle took place during the American Civil War, Battle of Gettysburg or Battle of Tarawa?",
+    "answer": "Battle of Gettysburg",
+    "supporting_titles": [
+      "Battle of Gettysburg",
+      "Battle of Tarawa"
     ]
   },
   {
@@ -931,24 +1355,40 @@
     "question": "Four presidents including the 26th president Theodore Roosevelt were featured in the 60ft sculpture in the granite face of Mount Rushmore which was sculpted by what sculptor?",
     "answer": "Sculptor Gutzon Borglum",
     "supporting_titles": [
-      "Mount Rushmore",
-      "Theodore Roosevelt"
+      "Theodore Roosevelt",
+      "Mount Rushmore"
     ]
   },
   {
     "question": "What is the name of the man who was partners with the electrical engineer that was awarded the Nobel Prize in Physics in December 2000?",
     "answer": "Robert Noyce",
     "supporting_titles": [
-      "Jack Kilby",
-      "Robert Noyce"
+      "Robert Noyce",
+      "Jack Kilby"
+    ]
+  },
+  {
+    "question": "Where was one of Sergei Prokofiev's most well-known operas first performed in 1921?",
+    "answer": "Chicago, Illinois",
+    "supporting_titles": [
+      "Sergei Prokofiev",
+      "The Love for Three Oranges"
+    ]
+  },
+  {
+    "question": "What occupations do Charles Burnett and Alan J. Pakula have in common?",
+    "answer": "film director, film producer, writer",
+    "supporting_titles": [
+      "Charles Burnett (director)",
+      "Alan J. Pakula"
     ]
   },
   {
     "question": "The Cinematic Orchestra was signed to the record label based in what city?",
     "answer": "London",
     "supporting_titles": [
-      "Ninja Tune",
-      "The Cinematic Orchestra"
+      "The Cinematic Orchestra",
+      "Ninja Tune"
     ]
   },
   {
@@ -960,11 +1400,35 @@
     ]
   },
   {
+    "question": "What actor from \"Willow\" also starred in \"The Usual Suspects\"?",
+    "answer": "Kevin Elliot Pollak",
+    "supporting_titles": [
+      "Kevin Pollak",
+      "The Usual Suspects"
+    ]
+  },
+  {
+    "question": "Who was the final champion of the Thailand Masters that was from Hong Kong?",
+    "answer": "Marco Fu",
+    "supporting_titles": [
+      "Thailand Masters",
+      "Marco Fu"
+    ]
+  },
+  {
     "question": "How many episodes were there of the TV series where Julianna Margulies had the role of Carol Hathaway ?",
     "answer": "331 episodes",
     "supporting_titles": [
-      "Julianna Margulies",
-      "ER (TV series)"
+      "ER (TV series)",
+      "Julianna Margulies"
+    ]
+  },
+  {
+    "question": "In which professional wrestling promotion did Randy Savage perform, after he left the World Wrestling Federation?",
+    "answer": "World Championship Wrestling",
+    "supporting_titles": [
+      "World Championship Wrestling",
+      "Randy Savage"
     ]
   },
   {
@@ -976,43 +1440,59 @@
     ]
   },
   {
+    "question": "Gorgoroth is a band based in which Norwegian county?",
+    "answer": "Hordaland",
+    "supporting_titles": [
+      "Bergen",
+      "Gorgoroth"
+    ]
+  },
+  {
     "question": "Who founded Methodism along with the man who was also part of the revival movement in England and the Great Awakening in the United States?",
     "answer": "George Whitefield",
     "supporting_titles": [
-      "United Methodist Church",
-      "John Wesley"
+      "John Wesley",
+      "United Methodist Church"
     ]
   },
   {
     "question": "What country of origin does Traveling Wilburys and Tom Petty have in common?",
     "answer": "American",
     "supporting_titles": [
-      "Traveling Wilburys",
-      "Tom Petty"
+      "Tom Petty",
+      "Traveling Wilburys"
     ]
   },
   {
     "question": "Are Ian Brown and Dee Snider both actors?",
     "answer": "no",
     "supporting_titles": [
-      "Ian Brown",
-      "Dee Snider"
+      "Dee Snider",
+      "Ian Brown"
+    ]
+  },
+  {
+    "question": "What type of profession does Chris Jericho and Gary Barlow have in common?",
+    "answer": "musician",
+    "supporting_titles": [
+      "Gary Barlow",
+      "Chris Jericho"
     ]
   },
   {
     "question": "In between Ana\u00efs Nin and Odysseas Elytis who was awarded the Nobel Prize in Literature?",
     "answer": "Odysseas Elytis",
     "supporting_titles": [
-      "Odysseas Elytis",
-      "Ana\u00efs Nin"
+      "Ana\u00efs Nin",
+      "Odysseas Elytis"
     ]
   },
   {
     "question": "The organization that Nicolae Titulescu served two terms as president was founded on what date?",
     "answer": "10 January 1920",
     "supporting_titles": [
-      "League of Nations",
-      "Nicolae Titulescu"
+      "Nicolae Titulescu",
+      "League of Nations"
     ]
   },
   {
@@ -1027,8 +1507,8 @@
     "question": "Are William James and Bret Easton Ellis both screenwriters?",
     "answer": "no",
     "supporting_titles": [
-      "William James",
-      "Bret Easton Ellis"
+      "Bret Easton Ellis",
+      "William James"
     ]
   },
   {
@@ -1051,8 +1531,8 @@
     "question": "This American film and stage actor played the self-destructive soldier Prewitt in Fred Zinnemann's 1953 film that centers around which event?",
     "answer": "the attack on Pearl Harbor",
     "supporting_titles": [
-      "Montgomery Clift",
-      "From Here to Eternity"
+      "From Here to Eternity",
+      "Montgomery Clift"
     ]
   },
   {
@@ -1061,6 +1541,14 @@
     "supporting_titles": [
       "Hugh Dowding",
       "Battle of Britain (film)"
+    ]
+  },
+  {
+    "question": "What is the name of the region that includes the cities Dover and Portsmouth, New Hampshire?",
+    "answer": "Seacoast Region",
+    "supporting_titles": [
+      "Dover, New Hampshire",
+      "Seacoast Region (New Hampshire)"
     ]
   },
   {
@@ -1088,515 +1576,27 @@
     ]
   },
   {
+    "question": "The water-based dark ride in Walt Disney is connected to a song known for what?",
+    "answer": "most performed song of all time",
+    "supporting_titles": [
+      "Robert B. Sherman",
+      "It's a Small World"
+    ]
+  },
+  {
     "question": "Are Portland International Airport and Gerald R. Ford International Airport both located in Oregon?",
     "answer": "no",
     "supporting_titles": [
-      "Portland International Airport",
-      "Gerald R. Ford International Airport"
+      "Gerald R. Ford International Airport",
+      "Portland International Airport"
     ]
   },
   {
-    "question": "The Battle of the Catalaunian Plains involved the king of the nomadic tribes of which peoples?",
-    "answer": "Germanic",
-    "supporting_titles": [
-      "Battle of the Catalaunian Plains",
-      "Visigoths"
-    ]
-  },
-  {
-    "question": "Where in Greek mythology was the father of Benthesikyme venerated as a chief deity?",
-    "answer": "Pylos and Thebes",
-    "supporting_titles": [
-      "Benthesikyme",
-      "Poseidon"
-    ]
-  },
-  {
-    "question": "Who was born first, Antonin Artaud or  Elizabeth Taylor?",
-    "answer": "Antonin Artaud",
-    "supporting_titles": [
-      "Antonin Artaud",
-      "Elizabeth Taylor"
-    ]
-  },
-  {
-    "question": "Between Harvey Pekar and Denise Levertov who was born earlier?",
-    "answer": "Denise Levertov",
-    "supporting_titles": [
-      "Denise Levertov",
-      "Harvey Pekar"
-    ]
-  },
-  {
-    "question": "In The Passion of the Christ, who did Monica Bellucci play?",
-    "answer": "Mary Magdalene",
-    "supporting_titles": [
-      "The Passion of the Christ",
-      "Monica Bellucci"
-    ]
-  },
-  {
-    "question": "In 2011 what was the population of the town where Deep Purple were formed ?",
-    "answer": "about 26,000.",
-    "supporting_titles": [
-      "Deep Purple",
-      "Hertford"
-    ]
-  },
-  {
-    "question": "Do the University of Florida and University of Texas System combine to have both a 2000 acre campus and over 216,000 students?",
+    "question": "Are Florida Atlantic University and Cleveland State University both colleges in the US?",
     "answer": "yes",
     "supporting_titles": [
-      "University of Florida",
-      "University of Texas System"
-    ]
-  },
-  {
-    "question": "Which was Disney's 2nd animated production, Pinocchio or Home on the Range?",
-    "answer": "Pinocchio",
-    "supporting_titles": [
-      "Pinocchio (1940 film)",
-      "Home on the Range (2004 film)"
-    ]
-  },
-  {
-    "question": "Are Southwest Florida International Airport and Henry E. Rohlsen Airport both in Florida?",
-    "answer": "no",
-    "supporting_titles": [
-      "Southwest Florida International Airport",
-      "Henry E. Rohlsen Airport"
-    ]
-  },
-  {
-    "question": "Annette Crosbie was nominated for the BAFTA Award for Best Actress in a Supporting Role for a 1976 film that is a retelling of what classic fairy tale?",
-    "answer": "Cinderella",
-    "supporting_titles": [
-      "The Slipper and the Rose",
-      "Annette Crosbie"
-    ]
-  },
-  {
-    "question": "Havelock Ellis and Arnold Bennett were both what?",
-    "answer": "writer",
-    "supporting_titles": [
-      "Havelock Ellis",
-      "Arnold Bennett"
-    ]
-  },
-  {
-    "question": "What movie was directed by Harold Ramis and stars Bill  Murray?",
-    "answer": "Groundhog Day",
-    "supporting_titles": [
-      "Groundhog Day (film)",
-      "Harold Ramis"
-    ]
-  },
-  {
-    "question": "Where operation Operation Dragoon and Battle of Cold Harbor fought during to different wars?",
-    "answer": "yes",
-    "supporting_titles": [
-      "Operation Dragoon",
-      "Battle of Cold Harbor"
-    ]
-  },
-  {
-    "question": "How did the prominent member of the Astor family who was a lieutenant colonel in the Spanish-American War die?",
-    "answer": "perished on the RMS \"Titanic\"",
-    "supporting_titles": [
-      "John Jacob Astor IV",
-      "Caroline Schermerhorn Astor"
-    ]
-  },
-  {
-    "question": "What nationality was the lover of Lord Alfred Douglas ? ",
-    "answer": "Irish",
-    "supporting_titles": [
-      "Lord Alfred Douglas",
-      "Oscar Wilde"
-    ]
-  },
-  {
-    "question": "What professional do both Marc Bolan and Ian MacKaye share?",
-    "answer": "musician",
-    "supporting_titles": [
-      "Marc Bolan",
-      "Ian MacKaye"
-    ]
-  },
-  {
-    "question": "How many episodes were in the original run of the HBO show that Kristin Davis played the character Charlotte York Goldenblatt?",
-    "answer": "94",
-    "supporting_titles": [
-      "Kristin Davis",
-      "Sex and the City"
-    ]
-  },
-  {
-    "question": "Are Werther and The Odyssey both operas?",
-    "answer": "no",
-    "supporting_titles": [
-      "Odyssey",
-      "Werther"
-    ]
-  },
-  {
-    "question": "What was the name of the hill that was the seat of an estate uphill Aldbury?",
-    "answer": "Chiltern Hills",
-    "supporting_titles": [
-      "Ashridge",
-      "Aldbury"
-    ]
-  },
-  {
-    "question": "Who has more scope of profession, Edward Dmytryk or Otto Preminger?",
-    "answer": "Otto Ludwig Preminger",
-    "supporting_titles": [
-      "Edward Dmytryk",
-      "Otto Preminger"
-    ]
-  },
-  {
-    "question": "Chris Cornell and Godsmack are both American rock icons, who is the founder of Godsmack?",
-    "answer": "Sully Erna",
-    "supporting_titles": [
-      "Godsmack",
-      "Chris Cornell"
-    ]
-  },
-  {
-    "question": "Which playwright lived a longer life, Edward Albee or J. M. Barrie?",
-    "answer": "Edward Franklin Albee III",
-    "supporting_titles": [
-      "J. M. Barrie",
-      "Edward Albee"
-    ]
-  },
-  {
-    "question": "Jayaprakash Narayan was posthumously awarded what highest Indian civilian award?",
-    "answer": "The Bharat Ratna",
-    "supporting_titles": [
-      "Jayaprakash Narayan",
-      "Bharat Ratna"
-    ]
-  },
-  {
-    "question": "Which American singer and songwriter has a mezzo-soprano vocal range, Tim Armstrong or Tori Amos?",
-    "answer": "Tori Amos",
-    "supporting_titles": [
-      "Tori Amos",
-      "Tim Armstrong"
-    ]
-  },
-  {
-    "question": "Are Chumbawamba and Spin Doctors from the same country?",
-    "answer": "no",
-    "supporting_titles": [
-      "Chumbawamba",
-      "Spin Doctors"
-    ]
-  },
-  {
-    "question": "Were Illinois Institute of Technology and Boise State University both bounded before 1950?",
-    "answer": "yes",
-    "supporting_titles": [
-      "Boise State University",
-      "Illinois Institute of Technology"
-    ]
-  },
-  {
-    "question": "Who lived to an older age, Elia Kazan or Moustapha Akkad?",
-    "answer": "Elia Kazan",
-    "supporting_titles": [
-      "Moustapha Akkad",
-      "Elia Kazan"
-    ]
-  },
-  {
-    "question": "Which super bowl that took place at the Miami Dolphins home stadium, featured the San Francisco 49ers defeating the San Diego Chargers?",
-    "answer": "Super Bowl XXIX",
-    "supporting_titles": [
-      "Hard Rock Stadium",
-      "Super Bowl XXIX"
-    ]
-  },
-  {
-    "question": "Do both Kettering University and University of New Mexico offer post-secondary degrees?",
-    "answer": "yes",
-    "supporting_titles": [
-      "Kettering University",
-      "University of New Mexico"
-    ]
-  },
-  {
-    "question": "The creator of \"Wallace and Gromit\" also created what animation comedy that matched animated zoo animals with a soundtrack of people talking about their homes? ",
-    "answer": "Creature Comforts",
-    "supporting_titles": [
-      "Nick Park",
-      "Creature Comforts"
-    ]
-  },
-  {
-    "question": "Which writer was ordained to priesthood, W. Somerset Maugham or Thomas Merton?",
-    "answer": "Thomas Merton",
-    "supporting_titles": [
-      "W. Somerset Maugham",
-      "Thomas Merton"
-    ]
-  },
-  {
-    "question": "How many children's books has the writer of the sitcom Maid Marian and her Merry Men written ? ",
-    "answer": "sixteen",
-    "supporting_titles": [
-      "Maid Marian and Her Merry Men",
-      "Tony Robinson"
-    ]
-  },
-  {
-    "question": "Boggle is a word game originally distributed by a toy and game manufacturer that published more than how many games?",
-    "answer": "1,800",
-    "supporting_titles": [
-      "Boggle",
-      "Parker Brothers"
-    ]
-  },
-  {
-    "question": "What type of profession does Alexandra David-N\u00e9el and Jack Kerouac have in common?",
-    "answer": "writer",
-    "supporting_titles": [
-      "Alexandra David-N\u00e9el",
-      "Jack Kerouac"
-    ]
-  },
-  {
-    "question": "What subsidiary of the largest airline of the Republic of China (Taiwan) has a main hub at Taichung Airport?",
-    "answer": "Mandarin Airlines",
-    "supporting_titles": [
-      "Mandarin Airlines",
-      "China Airlines"
-    ]
-  },
-  {
-    "question": "If Selfridges in London is the UK's second largest shop, which store - today owned by the State of Qatar - is the biggest?",
-    "answer": "Harrods",
-    "supporting_titles": [
-      "Harrods",
-      "Selfridges"
-    ]
-  },
-  {
-    "question": "Gabriela Mistral and Alan Sillitoe were both in what profession?",
-    "answer": "writers",
-    "supporting_titles": [
-      "Gabriela Mistral",
-      "Alan Sillitoe"
-    ]
-  },
-  {
-    "question": "What writer is older, Bernard Malamud or Lois McMaster Bujold?",
-    "answer": "Bernard Malamud",
-    "supporting_titles": [
-      "Bernard Malamud",
-      "Lois McMaster Bujold"
-    ]
-  },
-  {
-    "question": "Who was born first, Jos\u00e9 Echegaray y Eizaguirre or P. J. O'Rourke?",
-    "answer": "Jos\u00e9 Echegaray y Eizaguirre",
-    "supporting_titles": [
-      "Jos\u00e9 Echegaray",
-      "P. J. O'Rourke"
-    ]
-  },
-  {
-    "question": "Wapping has the oldest riverside tavern, dating back from when?",
-    "answer": "from around 1520",
-    "supporting_titles": [
-      "Prospect of Whitby",
-      "Wapping"
-    ]
-  },
-  {
-    "question": "Is Rice University or Stanford University further west?",
-    "answer": "Stanford University",
-    "supporting_titles": [
-      "Stanford University",
-      "Rice University"
-    ]
-  },
-  {
-    "question": "What profession was both John Updike and Bret Easton Ellis ?",
-    "answer": "short story writer",
-    "supporting_titles": [
-      "Bret Easton Ellis",
-      "John Updike"
-    ]
-  },
-  {
-    "question": "Are University of Virginia and Massachusetts Institute of Technology in the same country?",
-    "answer": "yes",
-    "supporting_titles": [
-      "Massachusetts Institute of Technology",
-      "University of Virginia"
-    ]
-  },
-  {
-    "question": "What is the name of the murder victim that worked in a restaurant, in which Mark Fuhrman was the detective?",
-    "answer": "Ron Goldman",
-    "supporting_titles": [
-      "Mark Fuhrman",
-      "Ron Goldman"
-    ]
-  },
-  {
-    "question": "Are Yoo-hoo and Faygo both carbonated drinks?",
-    "answer": "no",
-    "supporting_titles": [
-      "Yoo-hoo",
-      "Faygo"
-    ]
-  },
-  {
-    "question": "What soldier and statesman was also a brother to James FitzJames mother?",
-    "answer": "John Churchill, 1st Duke of Marlborough",
-    "supporting_titles": [
-      "James FitzJames, 1st Duke of Berwick",
-      "John Churchill, 1st Duke of Marlborough"
-    ]
-  },
-  {
-    "question": "As of 2010, what was the population of the county that was named after the 13th Speaker of the House of Representatives?",
-    "answer": "16,825",
-    "supporting_titles": [
-      "Polk County, Tennessee",
-      "James K. Polk"
-    ]
-  },
-  {
-    "question": "What is the birthday of the man who played Lex Luthor in Superman IV: The Quest for Peace?",
-    "answer": "January 30, 1930",
-    "supporting_titles": [
-      "Gene Hackman",
-      "Superman IV: The Quest for Peace"
-    ]
-  },
-  {
-    "question": "Opel once owned and manufactured the brand known under one shared name in New Zealand and Australia, and that brand is now a subsidiary of what company?",
-    "answer": "General Motors",
-    "supporting_titles": [
-      "Holden",
-      "Opel"
-    ]
-  },
-  {
-    "question": "Which author found inspiration in their career prior to writing, Hart Crane or John le Carr\u00e9?",
-    "answer": "John le Carr\u00e9",
-    "supporting_titles": [
-      "Hart Crane",
-      "John le Carr\u00e9"
-    ]
-  },
-  {
-    "question": "In what year was the county in which Kentucky's 20th-largest city is located founded?",
-    "answer": "1822",
-    "supporting_titles": [
-      "Murray, Kentucky",
-      "Calloway County, Kentucky"
-    ]
-  },
-  {
-    "question": "Which composer was wrote his music most recently, Michael Tippett or Luigi Cherubini?",
-    "answer": "Michael Kemp Tippett",
-    "supporting_titles": [
-      "Michael Tippett",
-      "Luigi Cherubini"
-    ]
-  },
-  {
-    "question": "What is 3/4 of the budget of the agency who  placed ECT machines  in the Class III category coming from?",
-    "answer": "pharmaceutical companies",
-    "supporting_titles": [
-      "Electroconvulsive therapy",
-      "Food and Drug Administration"
-    ]
-  },
-  {
-    "question": "What is the given name of the character depicted as Juliet Hulme in Heavenly Creatures?",
-    "answer": "Anne Perry",
-    "supporting_titles": [
-      "Heavenly Creatures",
-      "Anne Perry"
-    ]
-  },
-  {
-    "question": "Carroll County, Ohio is named after the only Catholic signatory to the Declaration of Independence, who is he?",
-    "answer": "Charles Carroll of Carrollton",
-    "supporting_titles": [
-      "Carroll County, Ohio",
-      "Charles Carroll of Carrollton"
-    ]
-  },
-  {
-    "question": "What is the name of the father of Childericus?",
-    "answer": "Merovech",
-    "supporting_titles": [
-      "Childeric I",
-      "Merovingian dynasty"
-    ]
-  },
-  {
-    "question": "Are Karl Shapiro and Elie Wiesel both American writers?",
-    "answer": "no",
-    "supporting_titles": [
-      "Elie Wiesel",
-      "Karl Shapiro"
-    ]
-  },
-  {
-    "question": "Who was born first, Lawrence Ferlinghetti or Luigi Pirandello?",
-    "answer": "Luigi Pirandello",
-    "supporting_titles": [
-      "Luigi Pirandello",
-      "Lawrence Ferlinghetti"
-    ]
-  },
-  {
-    "question": "Bill Nelson flew as a Payload Specialist on a Space Shuttle launched for the first time in what year?",
-    "answer": "1981",
-    "supporting_titles": [
-      "Bill Nelson",
-      "Space Shuttle Columbia"
-    ]
-  },
-  {
-    "question": "The McKinley Tariff was framed by the representative who was later assassinated in what month?",
-    "answer": "September 1901",
-    "supporting_titles": [
-      "William McKinley",
-      "McKinley Tariff"
-    ]
-  },
-  {
-    "question": "Are both American bands The Four Seasons and Local H popular around the Beatles were around?",
-    "answer": "no",
-    "supporting_titles": [
-      "Local H",
-      "The Four Seasons (band)"
-    ]
-  },
-  {
-    "question": "Which direction do both the M1 and the M6 Motorways travel?",
-    "answer": "heads north",
-    "supporting_titles": [
-      "M6 motorway",
-      "M1 motorway"
-    ]
-  },
-  {
-    "question": "Who was born first, Vladimir Nabokov or Harper Lee?",
-    "answer": "Vladimir Vladimirovich Nabokov",
-    "supporting_titles": [
-      "Vladimir Nabokov",
-      "Harper Lee"
+      "Florida Atlantic University",
+      "Cleveland State University"
     ]
   }
 ]

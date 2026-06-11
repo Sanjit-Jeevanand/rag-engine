@@ -11,12 +11,16 @@ BATCH_SIZE = 1000
 Row = tuple[str, int, str, str, str, str, int]
 
 
-def split_text(text: str) -> list[str]:
+def split_text(
+    text: str,
+    chunk_chars: int = CHUNK_CHARS,
+    overlap_chars: int = OVERLAP_CHARS,
+) -> list[str]:
     chunks: list[str] = []
     start = 0
     while start < len(text):
-        chunks.append(text[start : start + CHUNK_CHARS])
-        start += CHUNK_CHARS - OVERLAP_CHARS
+        chunks.append(text[start : start + chunk_chars])
+        start += chunk_chars - overlap_chars
     return chunks
 
 
@@ -37,13 +41,15 @@ def run_pipeline(
     snapshot_path: Path,
     db_path: Path,
     max_articles: int | None = None,
+    chunk_chars: int = CHUNK_CHARS,
+    overlap_chars: int = OVERLAP_CHARS,
 ) -> None:
     conn = init_db(db_path)
     batch: list[Row] = []
     for article_count, article in enumerate(parse_snapshot(snapshot_path)):
         if max_articles is not None and article_count >= max_articles:
             break
-        chunks = split_text(article.text)
+        chunks = split_text(article.text, chunk_chars, overlap_chars)
         chunk_count = len(chunks)
         for i, text in enumerate(chunks):
             batch.append(
