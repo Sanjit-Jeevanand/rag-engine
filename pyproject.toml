@@ -25,6 +25,7 @@ dev = [
     "pip-audit>=2.7",
     "pre-commit>=3.7",
     "pytest>=8.2",
+    "reportlab>=4.5.1",
     "ruff>=0.4",
 ]
 

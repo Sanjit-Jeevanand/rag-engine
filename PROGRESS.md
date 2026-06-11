@@ -124,5 +124,82 @@ PYTHONPATH=src uv run python scripts/watch_embed.py
 
 ---
 
-## Phase 2 — Evaluation Harness ⚙️
+## Phase 2 — Evaluation Harness ✅
 Goal: wire the eval framework before building any retrieval — so every future change is measured, not vibes.
+
+### Files Created
+- `eval/metrics.py` — pure-Python nDCG@k, Recall@k, MRR, Exact Match, F1
+- `eval/index.py` — VectorIndex: loads vectors.bin into FAISS IndexFlatIP, maps offset→title, dedupes by article
+- `eval/hotpotqa_eval.py` — loops 1,000 gold questions, scores all three metrics, writes latest.json
+- `eval/comparator.py` — diffs latest vs baseline, fails CI if any metric drops >0.02
+- `eval/__init__.py` — makes eval/ an importable package (fixes PYTHONPATH=. eval runs)
+- `scripts/seed_gold_set.py` — downloads HotpotQA distractor split, filters to embedded titles, saves 1,000 questions
+- `scripts/sample_retrieval.py` — qualitative view: 20 sampled questions with hit/miss breakdown
+- `eval/hotpotqa_gold.json` — 1,000 gold questions + supporting titles
+- `eval/results/baseline.json` — frozen reference metrics
+- `eval/results/latest.json` — most recent eval run
+
+### Numbers
+- Gold questions: **1,000** (HotpotQA distractor, both supporting articles embedded)
+- Final baseline (full 8.8M chunk index):
+  - **nDCG@10: 0.4618** — Reasonable
+  - **Recall@10: 0.478** — Poor (target for Phase 3)
+  - **MRR: 0.5994** — Strong
+- Regression tolerance: **0.02** — any drop fails CI
+
+### Key Decisions
+- Coverage-filtered eval: only score questions where both supporting articles are embedded — otherwise the gold set is unfair as embedding progresses
+- Article-level dedup in search: one article has many chunks; score at title level to match HotpotQA labels
+- 1,000 questions chosen over 200 (too low variance) and 7,400 (too slow for CI — ~30 min per run)
+- FAISS IndexFlatIP: exact search, 100% ANNS recall; will upgrade to IndexHNSWFlat after Phase 3
+
+### Commands Run
+```bash
+PYTHONPATH=src uv run python scripts/seed_gold_set.py     # build gold set
+PYTHONPATH=src:. uv run python eval/hotpotqa_eval.py      # score 1,000 Qs
+make eval-gate                                            # auto-promoted to baseline
+PYTHONPATH=src:. uv run python scripts/sample_retrieval.py # qualitative check
+```
+
+### Concepts Covered
+- nDCG@k — discounted cumulative gain; rewards correct docs ranked higher
+- Recall@k — fraction of ground-truth articles found in top-k
+- MRR — reciprocal rank of the first correct hit
+- Exact Match / F1 — generation metrics (implemented now, used in Phase 3+)
+- HotpotQA distractor setting — multi-hop; needs two supporting articles per question
+- FAISS IndexFlatIP — inner product on L2-normalised vectors = cosine similarity
+- ANNS recall vs retrieval recall — two different metrics, completely different meaning
+- Regression gate — retrieval quality as a first-class CI contract
+
+---
+
+## BEIR Baseline (dense-only, pre-Phase 3) ✅
+Goal: establish an out-of-domain retrieval baseline on standard BEIR datasets before adding any retrieval improvements.
+
+### Files Created
+- `scripts/beir_eval.py` — downloads SciFact + NFCorpus from HuggingFace, embeds with bge-small-en-v1.5,
+  builds per-dataset FAISS IndexFlatIP, scores nDCG@10 / Recall@10 / MRR on test qrels
+- `eval/results/beir_baseline.json` — frozen baseline numbers
+
+### Numbers (bge-small, dense-only IndexFlatIP)
+| Dataset  | nDCG@10 | Recall@10 | MRR    | Queries |
+|----------|---------|-----------|--------|---------|
+| SciFact  | 0.7243  | 0.8412    | 0.6924 | 300     |
+| NFCorpus | 0.3409  | 0.1623    | 0.5402 | 323     |
+
+### Interpretation
+- **SciFact (scientific claims)**: nDCG 0.72 is strong — bge-small handles short biomedical claims well;
+  Recall@10 0.84 means the supporting document is in the top 10 for 84% of test queries
+- **NFCorpus (medical/nutrition)**: nDCG 0.34 is typical for this notoriously hard dataset (BEIR paper reports
+  ~0.32 for BM25, ~0.33 for dense models); Recall@10 0.16 reflects graded relevance and a large qrels set
+- These numbers are the dense-only floor; Phase 5 hybrid + reranking should improve NFCorpus most
+
+### Commands Run
+```bash
+PYTHONPATH=src:. uv run python scripts/beir_eval.py
+```
+
+---
+
+## Phase 3 — FAISS Index Comparison 🔄
+Goal: compare IndexFlatL2 vs IndexHNSWFlat vs IndexIVFPQ on recall-latency tradeoff; persist best index to disk.

@@ -108,9 +108,85 @@ Use this to reproduce the build from scratch or hand off to another engineer.
 45. Create `tests/test_parser.py` — 4 tests: count, non-empty fields, first paper values, malformed skip
 46. `make test` → 10 passed
 
-### Next Steps
-47. Write ingestion pipeline (`src/rag_engine/ingest/pipeline.py`) — parse → chunk → insert SQLite
-38. Write parser — extract article_id, title, text, categories, timestamp from Wikipedia JSONL
-39. Write ingestion pipeline — parse → chunk → insert into SQLite with status='pending'
-40. Write embedding worker — async, bounded queue, reads pending rows, writes vectors to binary file
-41. Write integration test — ingest 1,000 docs end-to-end, assert vector file shape and checksum
+---
+
+## Phase 2 — Evaluation Harness
+
+### Metrics
+47. Create `eval/__init__.py` — makes eval/ importable as a package
+48. Create `eval/metrics.py` — pure-Python nDCG@k, Recall@k, MRR, Exact Match, F1; no heavy deps
+    → nDCG discounts hits by rank position (log2); MRR is reciprocal of first hit's rank
+49. Create `tests/test_metrics.py` — unit tests for all five metrics
+
+### Vector Index
+50. `uv add faiss-cpu` → adds FAISS to dependencies
+51. Create `eval/index.py` — VectorIndex class:
+    - `np.fromfile(vectors_path, dtype=np.float32).reshape(-1, 384)` — load full binary file
+    - `conn.execute("SELECT vector_offset, title FROM documents WHERE status='embedded'")` — map offsets to titles
+    - `faiss.IndexFlatIP(384)` — exact inner-product search (cosine on L2-normalised vectors)
+    - `search()` dedupes by article title — many chunks per article, score at article level
+    → key: search k×5 candidates then dedup down to k, to survive chunk-heavy articles
+
+### Gold Set
+52. `uv add datasets` → HuggingFace datasets library
+53. Create `scripts/seed_gold_set.py`:
+    - `load_dataset("hotpot_qa", "distractor", split="validation")` — 7,405 questions
+    - filter to questions where ALL supporting titles are embedded in DB
+    - `html.unescape()` on titles — HotpotQA encodes special chars (é, ü, etc.)
+    - sample 1,000 and save to `eval/hotpotqa_gold.json`
+54. `PYTHONPATH=src uv run python scripts/seed_gold_set.py` → saved 1,000 questions
+
+### Eval Runner
+55. Create `eval/hotpotqa_eval.py` — loops gold questions, calls index.search(), scores metrics, writes latest.json
+56. `PYTHONPATH=src:. uv run python eval/hotpotqa_eval.py` → first run with partial embedding: nDCG=0.14
+
+### Comparator + CI Gate
+57. Create `eval/comparator.py`:
+    - auto-promotes latest to baseline if no baseline exists
+    - `sys.exit(1)` if any metric drops > TOLERANCE=0.02 below baseline
+58. Update `eval/gate.py` to call `compare()` after sentinel check
+59. `make eval-gate` → passes, auto-seeds baseline.json
+60. Verify regression detection: manually lower a metric → gate fails
+
+### Final Baseline
+61. Wait for full embedding (8.8M/8.8M chunks)
+62. `PYTHONPATH=src uv run python scripts/seed_gold_set.py` — re-seed against full corpus
+63. `PYTHONPATH=src:. uv run python eval/hotpotqa_eval.py` → nDCG=0.4618, Recall=0.478, MRR=0.5994
+64. `make eval-gate` → auto-promotes to baseline
+65. `git add eval/results/baseline.json eval/results/latest.json && git commit`
+
+### Qualitative Check
+66. Create `scripts/sample_retrieval.py` — samples 20 questions, prints hit/miss + top-10 ranked titles
+67. `PYTHONPATH=src:. uv run python scripts/sample_retrieval.py` → 7/20 full hits (35%)
+    → finding: ALL missed articles are in the corpus; failures are exact-name mismatches BM25 would fix
+
+---
+
+## BEIR Baseline (dense-only)
+
+68. Create `scripts/beir_eval.py`:
+    - loads SciFact (5,183 docs) and NFCorpus (3,633 docs) from `BeIR/*` HuggingFace datasets
+    - qrels from `BeIR/scifact-qrels` and `BeIR/nfcorpus-qrels` (test split)
+    - embeds corpus docs as `"title. text"` with bge-small-en-v1.5, batch 512
+    - builds per-dataset `faiss.IndexFlatIP(384)`
+    - graded nDCG@10 (handles NFCorpus 0/1/2 scores), Recall@10, MRR
+    - saves results to `eval/results/beir_baseline.json`
+69. `PYTHONPATH=src:. uv run python scripts/beir_eval.py`
+    → SciFact:  nDCG@10=0.7243, Recall@10=0.8412, MRR=0.6924 (300 queries)
+    → NFCorpus: nDCG@10=0.3409, Recall@10=0.1623, MRR=0.5402 (323 queries)
+
+---
+
+## Phase 3 — FAISS Index Comparison
+
+### Goal
+Compare IndexFlatL2 vs IndexHNSWFlat vs IndexIVFPQ on the 8.8M-vector Wikipedia index.
+Plot recall-latency Pareto curve; persist best index to disk.
+
+### Plan
+70. Benchmark IndexFlatIP (current) for latency baseline
+71. Add IndexHNSWFlat — approximate, graph-based, fast at query time
+72. Add IndexIVFPQ — compressed, smallest memory footprint
+73. Property tests with Hypothesis — recall guarantees at each configuration
+74. Plot Pareto curve (recall vs P99 latency)
+75. Persist winning index to disk; load in eval/index.py

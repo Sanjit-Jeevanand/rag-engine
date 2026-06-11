@@ -25,3 +25,7 @@ data/
 .DS_Store
 logs/embed.log
 *.log
+
+# Phase docs (generated artefacts — not committed)
+*.pdf
+scripts/gen_phase_docs.py
