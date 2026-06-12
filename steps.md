@@ -209,3 +209,62 @@ Use this to reproduce the build from scratch or hand off to another engineer.
     - `pyproject.toml`: `addopts = "--ignore=tests/test_faiss_properties.py"`
     - `Makefile`: added `test-faiss` target
     - `make test-faiss` → 4 passed in 7.7s
+
+---
+
+## Phase 4 — Throughput Engineering
+
+77. Create `scripts/throughput_baseline.py`:
+    - loads HNSW from `data/hnsw.index` (no rebuild — reuses Phase 3 artifact)
+    - loads full vectors once; builds IndexFlatIP for comparison
+    - `_worker(index, queries, duration, worker_id, bar)` — tight search loop for fixed duration, tqdm progress
+    - `measure(index, queries, concurrency, label)` — ThreadPoolExecutor, aggregates latencies → QPS + P50/P99
+    - `faiss.omp_set_num_threads(1)` — prevents OMP oversubscription at c>1
+    - sweeps concurrency 1/4/8/10/12/16
+78. `PYTHONPATH=src:. uv run python scripts/throughput_baseline.py`
+    → HNSW c=1:  918 QPS,  p50=0.353ms, p99=13.594ms  (Python overhead dominates)
+    → HNSW c=8:  18,471 QPS, p50=0.429ms, p99=0.736ms  ← chosen (all perf cores saturated)
+    → HNSW c=12: 20,694 QPS, p50=0.533ms, p99=1.370ms  (efficiency cores: +12% QPS, +2× p99)
+    → FlatIP c=1: 16 QPS (memory-bandwidth-bound — doesn't scale with concurrency)
+79. Decision: `search_workers=8`, `faiss_omp_threads=1` — Pareto knee at c=8
+80. Update `src/rag_engine/config.py` — add serving settings block:
+    - `hnsw_path = "data/hnsw.index"`
+    - `hnsw_ef_search = 64`
+    - `search_workers = 8`
+    - `faiss_omp_threads = 1`
+    - all env-overridable via `RAG_*` prefix (pydantic-settings)
+81. Create `scripts/profile_target.py`:
+    - 5,000 single-vector search() calls in a tight loop (no timing, no tqdm)
+    - loads HNSW from disk, samples 500 query vectors
+    - designed to be run under py-spy, not directly
+82. `sudo .venv/bin/py-spy record --output flamegraph.svg -- .venv/bin/python scripts/profile_target.py`
+    → flamegraph shows 3 zones: vector load (31%), HNSW load (44%), search loop (25%)
+    → hot path: main → replacement_search (SWIG wrapper) → search
+    → `replacement_search` is paid per-call regardless of batch size — batching amortises it
+83. Create `scripts/throughput_batched.py`:
+    - sweeps batch sizes [1, 8, 32, 64, 128, 256, 512] at c=1
+    - stacks batch_size query vectors into one (batch_size, 384) matrix per search() call
+    - records per-query latency = total call time / batch_size for fair QPS comparison
+    - then runs best batch size at c=4 and c=8
+84. `PYTHONPATH=src:. uv run python scripts/throughput_batched.py`
+    → batch=256 c=1: 20,822 QPS (22.7× over single-vector baseline) ← theoretical ceiling
+    → batch=512 regresses (768 KB batch > L2 cache, BLAS spills to L3)
+    → batch=256 c=8: 21,490 QPS — only 3% more than c=1 (BLAS SIMD already fills one core)
+    → Decision: serving stays c=8 batch=1; batching only for offline/bulk workloads
+       Reason: batch=256 needs ~12ms to fill at 20K QPS, blowing the 5ms P99 budget
+85. Create `scripts/throughput_ivfpq.py`:
+    - builds IndexIVFPQ (nlist=4096, M=48, nbits=8) if not cached; saves to data/ivfpq.index
+    - sweeps nprobe [8, 32, 64, 128] × concurrency [1, 8]; uses Phase 3 recall values
+    - prints three-way tradeoff table: recall vs memory vs QPS
+86. `PYTHONPATH=src:. uv run python scripts/throughput_ivfpq.py`
+    → IVFPQ nprobe=8  c=8: 22,740 QPS, recall=0.6374, 0.50 GB ← fastest but 35pt recall gap
+    → IVFPQ nprobe=128 c=8: 2,141 QPS, recall=0.6878 ← dominated by HNSW on both axes
+    → HNSW ef=64      c=8: 17,070 QPS, recall=0.9857, 15.9 GB
+    → Decision: HNSW for production; IVFPQ only viable if RAM < 2 GB
+87. Create `scripts/perf_check.py`:
+    - `--record` mode: 2s warmup + 5s measure at c=8 ef=64, writes eval/results/perf_baseline.json
+    - check mode: re-measures and fails (exit 1) if QPS < baseline×0.90 or p99 > 5ms
+88. `PYTHONPATH=src:. uv run python scripts/perf_check.py --record`
+    → baseline: 19,463 QPS, p99=0.706ms, floor=17,516 QPS
+89. Add `make perf` target to Makefile (local only — not in `make ci`)
+    → `make perf` → perf gate passed (19,277 QPS, p99=0.742ms, delta=-1.0%)

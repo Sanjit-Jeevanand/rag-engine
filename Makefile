@@ -3,9 +3,10 @@
 # make test       — run pytest; fails if any test fails or no tests are collected
 # make audit      — scan dependencies for known CVEs via pip-audit
 # make eval-gate  — check eval/results/latest.json exists with a sentinel key
+# make perf       — throughput regression gate (local only; requires data/hnsw.index)
 # make ci         — run all of the above in order; mirrors the GitHub Actions pipeline
 
-.PHONY: lint typecheck test test-faiss audit eval-gate ci
+.PHONY: lint typecheck test test-faiss audit eval-gate perf ci
 
 lint:
 	uv run ruff check .
@@ -33,5 +34,8 @@ audit:
 
 eval-gate:
 	PYTHONPATH=. uv run python eval/gate.py
+
+perf:
+	PYTHONPATH=src:. uv run python scripts/perf_check.py
 
 ci: lint typecheck test audit eval-gate

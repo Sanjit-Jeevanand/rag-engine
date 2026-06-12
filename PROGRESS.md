@@ -234,3 +234,94 @@ uv run python scripts/build_hnsw_index.py                   # build + persist HN
 make test-faiss                                             # property tests
 make ci                                                     # full pipeline
 ```
+
+---
+
+## Phase 4 — Throughput Engineering ✅
+Goal: establish a concurrency baseline, profile the bottleneck, batch queries, and pin production settings in config.
+
+### Files Created / Modified
+- `scripts/throughput_baseline.py` — measures raw FAISS QPS at concurrency 1/4/8/10/12/16; loads HNSW from disk; tqdm progress bar per run
+- `src/rag_engine/config.py` — added serving settings: `hnsw_path`, `hnsw_ef_search`, `search_workers`, `faiss_omp_threads`
+
+### Concurrency Baseline Results (HNSW ef=64, 8.8M vectors, 10s runs)
+| Concurrency | QPS | p50 ms | p99 ms | Notes |
+|-------------|-----|--------|--------|-------|
+| 1 | 918 | 0.353 | 13.594 | GIL + Python overhead dominate; p99 spike = GC/scheduler |
+| 4 | 10,192 | 0.388 | 0.666 | FAISS releases GIL → true parallelism + Python overhead hidden |
+| **8 ✓** | **18,471** | **0.429** | **0.736** | **All 8 performance cores saturated — Pareto knee** |
+| 12 | 20,694 | 0.533 | 1.370 | Efficiency cores: +12% QPS, +2× p99 |
+| 16 | 20,815 | 0.546 | 4.759 | Plateau; p99 near 5ms budget |
+
+FlatIP (exact): 16 QPS at all concurrency levels — memory-bandwidth-bound (13.5 GB scan/query).
+
+### Key Decisions
+- **`search_workers = 8`**: saturates all performance cores; efficiency cores (c=12+) add only +12% QPS at 2× p99 cost
+- **`faiss_omp_threads = 1`**: FAISS internal OMP parallelism must be 1 when running c=8 threads — otherwise thread oversubscription causes scheduling contention
+- **Super-linear scaling explained**: at c=1, Python loop overhead (perf_counter, array slice, tqdm) is serialised with each FAISS call; at c>1, threads interleave so Python overhead in one thread is hidden behind FAISS work in another
+- **FlatIP doesn't scale with concurrency**: memory bandwidth is a shared physical resource; 4 threads scanning 13.5 GB simultaneously gives 4× worse p50 with identical total throughput
+
+### Production Settings (saved in `src/rag_engine/config.py`, env-overridable via `RAG_*`)
+| Setting | Value | Reason |
+|---------|-------|--------|
+| `hnsw_ef_search` | 64 | Phase 3 Pareto knee: 98.6% recall, 0.387ms p50 |
+| `search_workers` | 8 | One per performance core; efficiency cores add noise |
+| `faiss_omp_threads` | 1 | Avoid oversubscription at c=8 |
+| `hnsw_path` | `data/hnsw.index` | 15.9 GB persisted index |
+
+### py-spy Profiling
+Profiled 5,000 single-vector search calls under py-spy. Flamegraph showed three zones:
+- ~31% `np.fromfile` (vector load — I/O, nothing to optimise)
+- ~44% `faiss.read_index` (HNSW load from disk — I/O)
+- ~25% search loop: `main → replacement_search → search`
+
+Key finding: `replacement_search` (faiss/class_wrappers.py) is the SWIG wrapper paid on every `index.search()` call regardless of batch size. At single-vector it's paid 5,000×; with batching it's paid once per batch.
+
+### Batched Search Results (HNSW ef=64, c=1, 10s runs)
+| batch | QPS | speedup vs baseline |
+|-------|-----|---------------------|
+| 1 | 2,616 | 2.8× |
+| 8 | 11,009 | 12.0× |
+| 32 | 17,179 | 18.7× |
+| 64 | 18,958 | 20.6× |
+| 128 | 20,126 | 21.9× |
+| **256 ✓** | **20,822** | **22.7×** |
+| 512 | 20,217 | 22.0× ↓ |
+
+batch=512 regresses: 512 × 384 floats ≈ 768 KB, starts spilling out of L2 cache mid-multiply.
+
+### Why batch=256 c=1 is NOT the production serving config
+Despite winning on raw QPS, batching adds *queuing latency* — request #1 waits for 255 more to arrive before search fires. At 20K QPS a batch of 256 takes ~12ms to fill, blowing the 5ms P99 budget. In addition, the encoder (10–30ms per query) dominates the serving path; FAISS is never the bottleneck in real traffic. **Serving stays at c=8, batch=1.** Batch=256 is useful for offline/bulk workloads only.
+
+### IVFPQ vs HNSW — Three-Way Tradeoff
+| Index | Memory | Recall@10 | QPS c=8 | p99 ms |
+|-------|--------|-----------|---------|--------|
+| HNSW ef=64 | 15.9 GB | 0.9857 | 17,070 | 0.992 |
+| IVFPQ nprobe=8 | 0.50 GB | 0.6374 | 22,740 | 0.675 |
+| IVFPQ nprobe=128 | 0.50 GB | 0.6878 | 2,141 | 6.480 |
+
+IVFPQ nprobe=8 beats HNSW on raw QPS (+33%) and memory (32×) — 0.5 GB stays fully hot in RAM. But recall ceiling is 68.8% regardless of nprobe; every other nprobe setting is strictly dominated by HNSW (worse recall AND worse QPS). **HNSW wins for production**: 35-point recall gap cannot be traded for 33% QPS.
+
+### Perf Regression Gate
+- `scripts/perf_check.py` — 2s warmup + 5s measurement at c=8, ef=64; exits 1 if QPS drops > 10% or p99 > 5ms
+- `eval/results/perf_baseline.json` — baseline: 19,463 QPS, p99=0.706ms, floor=17,516 QPS
+- `make perf` — runs the gate locally; NOT in `make ci` (no index file on CI runners, hardware varies)
+
+### Production Settings (in `src/rag_engine/config.py`)
+| Setting | Value | Reason |
+|---------|-------|--------|
+| `hnsw_ef_search` | 64 | Phase 3 Pareto knee: 98.6% recall, 0.387ms p50 |
+| `search_workers` | 8 | One per performance core; efficiency cores add noise |
+| `faiss_omp_threads` | 1 | Avoid oversubscription at c=8 |
+| `hnsw_path` | `data/hnsw.index` | 15.9 GB persisted index |
+
+### Commands Run
+```bash
+PYTHONPATH=src:. uv run python scripts/throughput_baseline.py   # concurrency sweep
+sudo .venv/bin/py-spy record --output flamegraph.svg -- \
+    .venv/bin/python scripts/profile_target.py                  # flamegraph
+PYTHONPATH=src:. uv run python scripts/throughput_batched.py    # batching sweep
+PYTHONPATH=src:. uv run python scripts/throughput_ivfpq.py      # IVFPQ comparison
+PYTHONPATH=src:. uv run python scripts/perf_check.py --record   # record baseline
+make perf                                                        # gate passes
+```
