@@ -268,3 +268,118 @@ Use this to reproduce the build from scratch or hand off to another engineer.
     → baseline: 19,463 QPS, p99=0.706ms, floor=17,516 QPS
 89. Add `make perf` target to Makefile (local only — not in `make ci`)
     → `make perf` → perf gate passed (19,277 QPS, p99=0.742ms, delta=-1.0%)
+
+---
+
+## Phase 5 — Hybrid Retrieval
+
+### Retrieval module
+90. `mkdir -p src/rag_engine/retrieval && touch src/rag_engine/retrieval/__init__.py`
+91. `uv add bm25s` — scipy sparse inverted index; ~100ms for 1M docs vs 13.88s for rank_bm25
+92. Create `src/rag_engine/retrieval/bm25.py` — `BM25Retriever(doc_ids, doc_texts)`, `retrieve(query, k) -> list[str]`
+93. Create `src/rag_engine/retrieval/dense.py` — `DenseRetriever(doc_ids, corpus_vecs)`, `retrieve(query_vec, k) -> list[str]`; uses `faiss.IndexFlatIP`
+94. Create `src/rag_engine/retrieval/hybrid.py` — `reciprocal_rank_fusion(ranked_lists, k)`: sums `1/(60+rank+1)` across all lists, parameter-free
+95. Create `src/rag_engine/retrieval/reranker.py` — `CrossEncoderReranker(model_name)`, `rerank(query, candidates, doc_texts, k) -> list[str]`; uses `BAAI/bge-reranker-base`
+96. Export all four from `src/rag_engine/retrieval/__init__.py`
+
+### BEIR staircase
+97. `uv add sentence-transformers`
+98. Create `scripts/beir_hybrid_eval.py`:
+    - loads SciFact + NFCorpus from HuggingFace
+    - embeds corpus with bge-small-en-v1.5 (batch 512)
+    - runs three pipelines per query: dense-only → hybrid RRF → hybrid + cross-encoder rerank
+    - graded nDCG@10 (`_ndcg_at_k` handles NFCorpus 0/1/2 relevance)
+    - saves to `eval/results/beir_staircase.json`
+99. `PYTHONPATH=src:. uv run python scripts/beir_hybrid_eval.py`
+    → SciFact:  dense=0.7243, hybrid=0.6691, hybrid+rerank=0.6955 (Δ−0.0288)
+    → NFCorpus: dense=0.3409, hybrid=0.3233, hybrid+rerank=0.3125 (Δ−0.0284)
+    → Note: dense already near-optimal on BEIR; BM25 adds noise on scientific corpora
+
+### HotpotQA staircase
+100. Create `scripts/hotpotqa_hybrid_eval.py`:
+     - loads VectorIndex (8.8M vectors) + first chunk per article for BM25
+     - runs three pipelines: dense-only → hybrid RRF → hybrid + cross-encoder rerank
+     - metrics: nDCG@10, Recall@10, MRR on 1,000 gold questions
+     - saves to `eval/results/hotpotqa_staircase.json`
+101. `PYTHONPATH=src:. uv run python scripts/hotpotqa_hybrid_eval.py`
+     → Dense:         nDCG=0.4618, Recall=0.478, MRR=0.5994
+     → Hybrid (RRF):  nDCG=0.5398, Recall=0.611, MRR=0.6584  (+0.078 nDCG)
+     → Hybrid+Rerank: nDCG=0.7035, Recall=0.700, MRR=0.8575  (+0.242 nDCG total)
+     → HotpotQA benefits strongly: entity-heavy questions gain most from BM25 + reranking
+
+---
+
+## Phase 6 — Agentic Multi-hop RAG
+
+### LLM client
+102. `uv add openai` — GPT-4o-mini chosen: cheapest capable model, sufficient for structured extraction
+103. Create `src/rag_engine/llm.py`:
+     - lazy singleton `OpenAI()` client — reads `OPENAI_API_KEY` from env at first call, not import
+     - `complete(messages, *, model, max_tokens, system)` — system prepended as `{"role":"system"}` message
+     - `# type: ignore[arg-type]` on messages param — structurally identical to SDK's ChatCompletionMessageParam at runtime
+
+### Reranker extension
+104. Add `scores(query, candidates, doc_texts) -> np.ndarray` to `CrossEncoderReranker`:
+     - same body as `rerank()` but returns raw float array instead of sorted IDs
+     - used by agent for abstention: `float(np.max(scores)) < threshold` → "cannot answer"
+
+### Agent package
+105. Create `src/rag_engine/agent/` package: `__init__.py`, `llm.py`, `loop.py`
+     - `llm.py`: lazy singleton `OpenAI()` client, `complete()` function (moved from `src/rag_engine/llm.py`)
+     - `loop.py`: `MultiHopAgent` + `Hop` + `AgentResult` dataclasses, three system prompts
+     - `__init__.py`: re-exports `AgentResult`, `Hop`, `MultiHopAgent`, `complete`
+106. `MultiHopAgent.answer()` flow in `loop.py`:
+     - Hop 1: retrieve top-k on original question
+     - Reranker abstention: `max(scores[:3]) < threshold` → return early without LLM call
+     - LLM call 1 (bridge): extract next search query, or `"ANSWER_DIRECT"` to skip hop 2
+     - Hop 2: retrieve on bridge query (skipped if `ANSWER_DIRECT` or at hop cap)
+     - LLM call 2 (answer): structured `ANSWER: <concise>` + `CITATIONS: [...]` format
+     - LLM-based abstention: `answer_text == _CANNOT_ANSWER` → return `abstained=True`
+     - LLM call 3 (reflection): `FULLY_SUPPORTED: yes/no` + `SEARCH_QUERY: <gap>`
+     - Hop 3 (if unsupported): retrieve on gap query, append to pool
+     - LLM call 4 (regenerate): new answer from expanded pool
+     - Citation grounding: `hallucinated_ids = [c for c in cited if c not in pool]`
+
+### Unit tests
+107. Create `tests/test_agent.py`: 4 unit tests, patch target `rag_engine.agent.loop.complete`
+     - `test_abstains_when_scores_below_threshold` — reranker scores [-6,-7,-8], threshold -4.0 → abstain, 0 LLM calls
+     - `test_hallucinated_citation_is_flagged` — LLM cites GHOST_DOC not in retrieved set → flagged
+     - `test_hop_cap_is_respected` — max_hops=1 → 1 retrieve call, no reflection
+     - `test_reflection_triggers_extra_hop` — FULLY_SUPPORTED: no → 3 hops, reflection_triggered=True
+     → All 4 pass
+
+### Single-shot failure analysis
+108. Create `scripts/analyze_failures.py`: single-shot RAG on 100 HotpotQA questions
+     → EM=0.31, F1=0.46; 69 failures, 41 are bridge gaps (one supporting article not in top-5)
+     → Confirms multi-hop hypothesis: 59% of failures need a second retrieval hop
+
+### Agentic eval + debugging
+109. Create `scripts/hotpotqa_agentic_eval.py`: side-by-side single-shot vs multi-hop on N questions
+     - `--n` arg (default 100); out-of-corpus abstention test on 5 post-corpus questions
+     - First run: EM 0.31 → 0.00 (catastrophic regression)
+     → Root cause: `_ANSWER_SYSTEM` asked for verbose cited prose ("Paris is the capital. [A]");
+       `_extract_answer` returned the full sentence; EM against gold "Paris" → always 0
+110. Fix answer format: change `_ANSWER_SYSTEM` to `ANSWER: <concise>\nCITATIONS: [...]`
+     - `_extract_answer` now matches `^ANSWER:\s*(.+)$` with `re.MULTILINE`; falls back to pre-CITATIONS text
+     → EM 0.00 → 0.50 on 20-question smoke run; doubled single-shot baseline
+111. Fix abstention: add `_CANNOT_ANSWER` sentinel to `_ANSWER_SYSTEM`
+     - Model told to output `ANSWER: I cannot answer from the available evidence.` when passages insufficient
+     - `loop.py` checks `answer_text == _CANNOT_ANSWER` after extraction → returns `abstained=True`
+     → Out-of-corpus abstention: 0/5 → 4/5 caught
+
+### BM25 index persistence
+112. Add `save(index_dir)` + `BM25Retriever.load(index_dir)` class method using `bm25s` native API
+     - Saves `bm25s` index files + `doc_ids.json` sidecar to `data/bm25_index/`
+     - Both eval scripts check `BM25_INDEX_DIR.exists()` before building
+     → First run: build + save (~10s); subsequent runs: load from cache (<1s)
+
+### Retrieval metrics
+113. Add IR metrics to `hotpotqa_agentic_eval.py`: Recall@5, Precision@5, nDCG@5, MRR
+     - Computed per-question for single-shot and multi-hop (hop 1 separately + combined pool)
+     - Detailed timestamped responses saved to `eval/responses/` (gitignored)
+114. `PYTHONPATH=src:. uv run --env-file .env python scripts/hotpotqa_agentic_eval.py --n 100`
+     → Single-shot:  EM=0.29, F1=0.45, Recall@5=0.68, nDCG@5=0.70, MRR=0.85
+     → Multi-hop:    EM=0.49, F1=0.60, Combined Recall=0.785
+     → Δ EM = +0.20 (target was +0.10) ✓
+     → Abstention:   4/5 out-of-corpus caught, 8/100 in-corpus false positives
+     → Hallucinations: 0/100 ✓

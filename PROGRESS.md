@@ -325,3 +325,58 @@ PYTHONPATH=src:. uv run python scripts/throughput_ivfpq.py      # IVFPQ comparis
 PYTHONPATH=src:. uv run python scripts/perf_check.py --record   # record baseline
 make perf                                                        # gate passes
 ```
+
+---
+
+## Phase 6 — Agentic Multi-hop RAG ✅
+Goal: replace single-shot RAG with an iterative retrieve-reason-retrieve loop that handles bridge questions — where the answer requires two supporting articles that never co-occur in one document.
+
+### Files Created / Modified
+- `src/rag_engine/agent/__init__.py` — package re-exporting AgentResult, Hop, MultiHopAgent, complete
+- `src/rag_engine/agent/llm.py` — lazy singleton OpenAI client; `complete()` wraps chat completions
+- `src/rag_engine/agent/loop.py` — MultiHopAgent: full hop loop, bridge extraction, reflection, citation grounding, abstention
+- `src/rag_engine/retrieval/reranker.py` — added `scores()` method returning raw float array (unblocks abstention)
+- `tests/test_agent.py` — 4 unit tests: abstention, hallucination flagging, hop cap, reflection trigger
+- `scripts/analyze_failures.py` — single-shot failure analysis on 100 HotpotQA questions
+- `scripts/hotpotqa_agentic_eval.py` — side-by-side eval: single-shot vs multi-hop, retrieval metrics, abstention test
+- `.gitignore` — added `eval/responses/` (detailed per-question logs, not committed)
+
+### Numbers
+| Metric | Single-shot | Multi-hop | Δ |
+|--------|-------------|-----------|---|
+| EM | 0.29 | 0.49 | **+0.20** |
+| F1 | 0.45 | 0.60 | +0.15 |
+| Recall@5 (hop 1) | 0.68 | 0.68 | — |
+| Recall (combined) | — | 0.785 | +10.5 pp |
+| nDCG@5 | 0.70 | 0.70 | — |
+| MRR | 0.85 | 0.85 | — |
+| Out-of-corpus abstention | — | 4/5 | — |
+| Hallucinations | — | 0/100 | — |
+
+### Key Decisions
+- **GPT-4o-mini over Haiku**: already had OpenAI API key; cheapest capable model (~$0.15/1M tokens input)
+- **Structured `ANSWER: <concise>` format**: verbose cited prose killed EM (0.31 → 0.00); explicit line extraction recovered it (+0.20 vs baseline)
+- **LLM-based abstention over reranker-only**: BGE reranker scores stay above -4.0 even for out-of-corpus queries (Wikipedia is too broad); LLM saying "I cannot answer" is a stronger signal
+- **Bridge query extraction**: LLM reads hop-1 passages and outputs a targeted search query for the missing entity; this is what drives combined Recall from 0.68 → 0.785
+- **Reflection cap at max_hops=3**: prevents runaway LLM loops; 12/100 questions triggered reflection
+- **BM25 index persistence**: `bm25s` save/load API; builds once (~10s), loads from `data/bm25_index/` in <1s on every subsequent run
+
+### Concepts Covered
+- Multi-hop QA — bridge questions require two supporting articles that never co-occur in one document
+- Bridge entity extraction — LLM reads hop-1 passages and outputs a targeted search query
+- Self-reflection — second LLM call checks if the answer is fully supported; triggers extra hop if not
+- Citation grounding — verify cited passage IDs are in the retrieved set; flag hallucinations
+- Abstention — two-layer: reranker score threshold (fast, pre-LLM) + LLM canonical string (semantic)
+- Lazy singleton pattern — defer `OpenAI()` init to first call so tests can mock without a key
+- `side_effect=list` in unittest.mock — sequential returns for multiple LLM calls in one test
+- Patch target is import location — patch `rag_engine.agent.loop.complete`, not `rag_engine.agent.llm.complete`
+
+### Commands Run
+```bash
+uv add openai
+PYTHONPATH=src:. uv run --env-file .env python -c "from rag_engine.agent.llm import complete; ..."   # smoke test
+uv run pytest tests/test_agent.py -v                                                                   # 4 passed
+PYTHONPATH=src:. uv run --env-file .env python scripts/analyze_failures.py                            # single-shot baseline
+PYTHONPATH=src:. uv run --env-file .env python scripts/hotpotqa_agentic_eval.py --n 20               # smoke
+PYTHONPATH=src:. uv run --env-file .env python scripts/hotpotqa_agentic_eval.py --n 100              # full eval
+```

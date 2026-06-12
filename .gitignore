@@ -12,6 +12,9 @@ eval/results/*.json
 !eval/results/latest.json
 !eval/results/baseline.json
 
+# Detailed per-question responses (large, not committed)
+eval/responses/
+
 # Session context
 .convo
 
