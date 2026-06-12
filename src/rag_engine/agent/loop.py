@@ -137,9 +137,7 @@ class MultiHopAgent:
         reflection_triggered = False
         if len(hops) < self._max_hops:
             msg = (
-                f"Question: {question}\n"
-                f"Answer: {answer_text}\n\n"
-                f"Passages:\n{passages}"
+                f"Question: {question}\nAnswer: {answer_text}\n\nPassages:\n{passages}"
             )
             raw_reflect = complete(
                 [{"role": "user", "content": msg}],

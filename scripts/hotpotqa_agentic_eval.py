@@ -343,8 +343,7 @@ def main() -> None:
     print(f"{'':20} {'EM':>7}  {'F1':>7}  {'Hops':>5}  {'Abstain':>7}")
     print(f"{'─' * w}")
     print(
-        f"{'Single-shot':<20} {ss['em']:>7.4f}  {ss['f1']:>7.4f}"
-        f"  {'1.0':>5}  {'—':>7}"
+        f"{'Single-shot':<20} {ss['em']:>7.4f}  {ss['f1']:>7.4f}  {'1.0':>5}  {'—':>7}"
     )
     print(
         f"{'Multi-hop':<20} {mh['em']:>7.4f}  {mh['f1']:>7.4f}"
