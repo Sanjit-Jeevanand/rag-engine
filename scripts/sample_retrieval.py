@@ -1,13 +1,3 @@
-"""
-Show retrieval output for 20 sampled gold questions.
-
-For each question: the correct answer, which supporting articles were needed,
-which were retrieved, and the top-5 retrieved article titles.
-
-Run with:
-    PYTHONPATH=src:. uv run python scripts/sample_retrieval.py
-"""
-
 import json
 import random
 from pathlib import Path
@@ -20,10 +10,6 @@ GOLD_PATH = Path("eval/hotpotqa_gold.json")
 SAMPLE = 20
 SEED = 99
 K = 10
-
-
-def _hit(retrieved: list[str], relevant: set[str]) -> bool:
-    return all(t in retrieved for t in relevant)
 
 
 def _recall(retrieved: list[str], relevant: set[str]) -> float:

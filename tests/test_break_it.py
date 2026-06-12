@@ -1,10 +1,3 @@
-"""
-Break-it tests: verify the embedder's crash-recovery guarantee.
-
-Scenario: crash mid-embed → one chunk stuck as 'pending' → restart →
-only that chunk re-embeds, all others untouched.
-"""
-
 import gzip
 import json
 import sqlite3

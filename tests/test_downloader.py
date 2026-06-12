@@ -11,7 +11,7 @@ def test_skips_if_exists() -> None:
         dest.write_text("existing")
         result = download_snapshot(dest)
         assert result == dest
-        assert dest.read_text() == "existing"  # untouched
+        assert dest.read_text() == "existing"
 
 
 def test_writes_to_tmp_then_renames(tmp_path: Path) -> None:

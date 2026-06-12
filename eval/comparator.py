@@ -1,8 +1,3 @@
-"""
-Compare latest eval results against a saved baseline.
-Raises SystemExit(1) if any tracked metric regresses beyond the allowed tolerance.
-"""
-
 import json
 import sys
 from pathlib import Path

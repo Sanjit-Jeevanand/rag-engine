@@ -13,6 +13,7 @@ dependencies = [
     "llama-cpp-python>=0.3.28",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.3",
+    "bm25s>=0.2.12",
     "sentence-transformers>=5.5.1",
     "structlog>=24.1",
     "tqdm>=4.68.2",

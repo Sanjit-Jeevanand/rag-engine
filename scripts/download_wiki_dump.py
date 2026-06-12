@@ -1,16 +1,4 @@
 #!/usr/bin/env python3
-"""
-Download the Wikipedia CirrusSearch dump.
-
-No dependencies beyond the Python stdlib — run with any Python 3.8+.
-
-Usage:
-    python scripts/download_wiki_dump.py
-
-Downloads to data/wiki-dump.json.gz (~20 GB compressed).
-Automatically resumes if interrupted — safe to Ctrl-C and re-run.
-"""
-
 import sys
 import urllib.request
 from pathlib import Path

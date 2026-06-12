@@ -1,23 +1,3 @@
-"""
-Phase 4 — Batched search throughput benchmark.
-
-Compares single-vector search() calls (baseline) against batched calls
-where batch_size queries are stacked into one (batch_size, 384) matrix
-and passed to index.search() in a single call.
-
-FAISS is built on BLAS, which is optimised for matrix×matrix operations.
-A single search(batch_size, 384) call:
-  - pays the SWIG wrapper overhead once instead of batch_size times
-  - gives BLAS a real matrix multiply to vectorise with SIMD / AVX
-  - keeps the CPU pipeline full across the whole batch
-
-Sweep: batch sizes 1→512 at concurrency 1 (isolates batching gain from
-thread scaling), then best batch size at concurrency 4 and 8.
-
-Run with:
-    PYTHONPATH=src:. uv run python scripts/throughput_batched.py
-"""
-
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -35,13 +15,7 @@ SEED = 42
 DURATION = 10
 BATCH_SIZES = [1, 8, 32, 64, 128, 256, 512]
 
-# Baseline from Phase 4 concurrency sweep (single-vector, c=1)
-BASELINE_QPS = 918.6
-
-
-# ---------------------------------------------------------------------------
-# Setup
-# ---------------------------------------------------------------------------
+BASELINE_QPS = 918.6  # single-vector c=1 from throughput_baseline.py
 
 
 def load_query_pool(path: Path, n: int, seed: int) -> np.ndarray:
@@ -60,11 +34,6 @@ def load_hnsw(path: Path) -> faiss.IndexHNSWFlat:
     return index  # type: ignore[return-value]
 
 
-# ---------------------------------------------------------------------------
-# Batched worker
-# ---------------------------------------------------------------------------
-
-
 def _worker(
     index: faiss.Index,
     queries: np.ndarray,
@@ -73,12 +42,6 @@ def _worker(
     batch_size: int,
     bar: tqdm,
 ) -> list[float]:
-    """
-    Each iteration stacks `batch_size` consecutive query vectors into a
-    (batch_size, 384) matrix and fires a single index.search() call.
-    Latency is recorded per-query (total call time / batch_size) so QPS
-    numbers are comparable to the single-vector baseline.
-    """
     latencies: list[float] = []
     n = len(queries)
     i = worker_id
@@ -106,11 +69,6 @@ def _worker(
     return latencies
 
 
-# ---------------------------------------------------------------------------
-# Measure
-# ---------------------------------------------------------------------------
-
-
 def measure(
     index: faiss.Index,
     queries: np.ndarray,
@@ -120,10 +78,9 @@ def measure(
 ) -> dict:
     all_latencies: list[float] = []
 
-    bar_desc = f"  {label}"
     t_start = time.perf_counter()
     with (
-        tqdm(desc=bar_desc, unit="q", dynamic_ncols=True) as bar,
+        tqdm(desc=f"  {label}", unit="q", dynamic_ncols=True) as bar,
         ThreadPoolExecutor(max_workers=concurrency) as pool,
     ):
         futures = [
@@ -147,11 +104,6 @@ def measure(
     }
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-
-
 def main() -> None:
     faiss.omp_set_num_threads(1)
 
@@ -168,13 +120,10 @@ def main() -> None:
 
     results = []
 
-    # --- Batch size sweep at c=1 -------------------------------------------
     print("--- Batch size sweep (concurrency=1) ---")
     for bs in BATCH_SIZES:
         results.append(measure(index, queries, 1, bs, f"batch={bs:<4} c=1"))
 
-    # --- Best batch size at higher concurrency --------------------------------
-    # find the batch size with best QPS from the c=1 sweep
     c1_results = [r for r in results if r["concurrency"] == 1]
     best_bs = max(c1_results, key=lambda r: r["qps"])["batch_size"]
 
@@ -182,7 +131,6 @@ def main() -> None:
     for c in [4, 8]:
         results.append(measure(index, queries, c, best_bs, f"batch={best_bs:<4} c={c}"))
 
-    # --- Summary table --------------------------------------------------------
     sep = "=" * 65
     print(f"\n\n{sep}")
     cols = f"{'Label':<20} {'batch':>5} {'c':>2}  {'QPS':>8}  {'p50':>7}  {'x':>7}"

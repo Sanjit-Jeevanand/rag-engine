@@ -1,22 +1,3 @@
-"""
-Phase 4 — Throughput regression gate.
-
-Measures HNSW search QPS at the production serving config (c=8, ef=64)
-and compares against a stored baseline.  Exits 1 if QPS drops more than
-TOLERANCE below the baseline, or if p99 exceeds the P99_BUDGET.
-
-Usage:
-    # Record a new baseline (run after any intentional perf improvement):
-    PYTHONPATH=src:. uv run python scripts/perf_check.py --record
-
-    # Check current throughput against baseline (run before pushing):
-    PYTHONPATH=src:. uv run python scripts/perf_check.py
-
-Added to Makefile as 'make perf'.  NOT wired into 'make ci' — the HNSW
-index (15.9 GB) is not available on CI runners and hardware varies too
-much for a meaningful absolute threshold.
-"""
-
 import argparse
 import json
 import sys
@@ -37,14 +18,9 @@ N_QUERY_POOL = 1_000
 CONCURRENCY = 8
 EF_SEARCH = 64
 WARMUP_S = 2  # discarded — lets index warm up in page cache
-MEASURE_S = 5  # measurement window
+MEASURE_S = 5
 TOLERANCE = 0.10  # fail if QPS drops > 10% below baseline
-P99_BUDGET = 5.0  # ms — absolute ceiling from Phase 4 spec
-
-
-# ---------------------------------------------------------------------------
-# Setup
-# ---------------------------------------------------------------------------
+P99_BUDGET = 5.0  # ms
 
 
 def load_queries(vectors_path: Path, n: int, seed: int) -> np.ndarray:
@@ -57,11 +33,6 @@ def load_index(path: Path) -> faiss.IndexHNSWFlat:
     index = faiss.read_index(str(path))
     index.hnsw.efSearch = EF_SEARCH  # type: ignore[attr-defined]
     return index  # type: ignore[return-value]
-
-
-# ---------------------------------------------------------------------------
-# Measurement
-# ---------------------------------------------------------------------------
 
 
 def _worker(
@@ -101,11 +72,6 @@ def measure(index: faiss.Index, queries: np.ndarray, duration: float) -> dict:
         "p99_ms": round(float(np.percentile(arr, 99)), 3),
         "total_queries": len(arr),
     }
-
-
-# ---------------------------------------------------------------------------
-# Record / check
-# ---------------------------------------------------------------------------
 
 
 def record(index: faiss.Index, queries: np.ndarray) -> None:
@@ -176,11 +142,6 @@ def check(index: faiss.Index, queries: np.ndarray) -> None:
         if not p99_ok:
             print(f"\n✗ p99 over budget: {result['p99_ms']:.3f} ms > {P99_BUDGET} ms")
         sys.exit(1)
-
-
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
 
 
 def main() -> None:

@@ -1,17 +1,3 @@
-"""
-Build and persist the HNSW index to disk.
-
-Reads vectors.bin once, builds IndexHNSWFlat with the parameters chosen
-from the Phase 3 benchmark (M=32, efSearch=64 — 98.6% recall, 0.39ms p50),
-and writes the result to data/hnsw.index.
-
-After this runs once, eval/index.py loads from the saved file instead of
-rebuilding from 13.5 GB of vectors every startup (~30s -> ~5s).
-
-Run with:
-    uv run python scripts/build_hnsw_index.py
-"""
-
 import time
 from pathlib import Path
 
@@ -21,9 +7,9 @@ import numpy as np
 VECTORS_PATH = Path("data/vectors.bin")
 INDEX_PATH = Path("data/hnsw.index")
 VECTOR_DIM = 384
-HNSW_M = 32  # neighbours per node — chosen in Phase 3 benchmark
-EF_CONSTRUCTION = 200  # graph build quality — higher = better graph, slower build
-EF_SEARCH = 64  # query-time exploration — 98.6% recall at 0.39ms p50
+HNSW_M = 32  # neighbours per node
+EF_CONSTRUCTION = 200  # higher = better graph, slower build
+EF_SEARCH = 64  # 98.6% recall at 0.39ms p50
 
 
 def main() -> None:

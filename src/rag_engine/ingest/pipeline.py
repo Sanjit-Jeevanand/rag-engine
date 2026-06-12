@@ -16,12 +16,8 @@ def split_text(
     chunk_chars: int = CHUNK_CHARS,
     overlap_chars: int = OVERLAP_CHARS,
 ) -> list[str]:
-    chunks: list[str] = []
-    start = 0
-    while start < len(text):
-        chunks.append(text[start : start + chunk_chars])
-        start += chunk_chars - overlap_chars
-    return chunks
+    step = chunk_chars - overlap_chars
+    return [text[i : i + chunk_chars] for i in range(0, len(text), step)]
 
 
 def _insert_batch(conn: sqlite3.Connection, batch: list[Row]) -> None:

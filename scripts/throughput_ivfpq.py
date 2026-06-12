@@ -1,28 +1,3 @@
-"""
-Phase 4 — IVFPQ vs HNSW throughput comparison.
-
-Builds (or loads) an IndexIVFPQ over the full 8.8M-vector corpus, then
-runs the same concurrency sweep used in the HNSW baseline so the numbers
-are directly comparable.
-
-Three-way tradeoff measured:
-  recall@10  — from Phase 3 benchmark (no need to recompute)
-  memory     — index size on disk / in RAM
-  QPS / p99  — measured here at concurrency 1 and 8
-
-IVFPQ params (same as Phase 3):
-  nlist=4096, m_pq=48, nbits=8
-  → 48 bytes/vector vs 1536 bytes raw (32× compression)
-  → recall ceiling ~69% regardless of nprobe
-
-nprobe sweep: [8, 32, 64, 128]
-  nprobe controls how many Voronoi clusters are scanned per query.
-  Higher nprobe = better recall, slower search.
-
-Run with:
-    PYTHONPATH=src:. uv run python scripts/throughput_ivfpq.py
-"""
-
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -52,11 +27,6 @@ PHASE3_RECALL = {
     128: 0.6878,
 }
 HNSW_RECALL = 0.9857  # ef=64
-
-
-# ---------------------------------------------------------------------------
-# Build / load
-# ---------------------------------------------------------------------------
 
 
 def load_vectors(path: Path) -> np.ndarray:
@@ -105,11 +75,6 @@ def load_hnsw(path: Path) -> faiss.IndexHNSWFlat:
 def sample_queries(vecs: np.ndarray, n: int, seed: int) -> np.ndarray:
     rng = np.random.default_rng(seed)
     return vecs[rng.choice(len(vecs), size=n, replace=False)]
-
-
-# ---------------------------------------------------------------------------
-# Worker + measure (same pattern as throughput_baseline.py)
-# ---------------------------------------------------------------------------
 
 
 def _worker(
@@ -165,11 +130,6 @@ def measure(
     }
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-
-
 def main() -> None:
     faiss.omp_set_num_threads(1)
 
@@ -192,7 +152,6 @@ def main() -> None:
 
     results = []
 
-    # IVFPQ: sweep nprobe at each concurrency level
     print("--- IndexIVFPQ ---")
     for nprobe in [8, 32, 64, 128]:
         ivfpq.nprobe = nprobe
@@ -200,14 +159,12 @@ def main() -> None:
             label = f"IVFPQ nprobe={nprobe:<3} c={c}"
             results.append({**measure(ivfpq, queries, c, label), "nprobe": nprobe})
 
-    # HNSW reference at same concurrency levels
     print()
     print("--- IndexHNSWFlat (ef=64) reference ---")
     for c in CONCURRENCY_LEVELS:
         label = f"HNSW ef=64          c={c}"
         results.append({**measure(hnsw, queries, c, label), "nprobe": None})
 
-    # Summary table
     ivfpq_gb = IVFPQ_PATH.stat().st_size / 1e9
     hnsw_gb = HNSW_PATH.stat().st_size / 1e9
 

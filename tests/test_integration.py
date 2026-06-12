@@ -1,8 +1,3 @@
-"""
-End-to-end integration test: parse → chunk → embed → verify.
-Uses a synthetic fixture (100 articles) so no real download is needed.
-"""
-
 import gzip
 import json
 import sqlite3

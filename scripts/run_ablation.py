@@ -1,13 +1,3 @@
-"""
-Mini chunking ablation study.
-
-Takes 1,000 already-embedded articles, re-chunks them at different sizes,
-embeds only those chunks, and compares retrieval quality.
-Total runtime: ~30 minutes.
-
-Run with: PYTHONPATH=src:. uv run python scripts/run_ablation.py
-"""
-
 import json
 import random
 import sqlite3
@@ -41,11 +31,9 @@ STRATEGIES: dict[str, dict[str, int]] = {
 
 
 def load_articles(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
-    """Load N articles whose titles appear in the HotpotQA gold set."""
     gold = json.loads(Path("eval/hotpotqa_gold.json").read_text())
     gold_titles = {t for item in gold for t in item["supporting_titles"]}
 
-    # get all gold article_ids first
     placeholders = ",".join("?" * len(gold_titles))
     gold_ids = [
         r[0]
@@ -57,7 +45,6 @@ def load_articles(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
         ).fetchall()
     ]
 
-    # pad with random noise articles as distractors
     extra_ids = [
         r[0]
         for r in conn.execute(
@@ -78,9 +65,7 @@ def load_articles(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
         ).fetchall()
         title = rows[0][2]
         ordered = [r[1] for r in rows]
-        full_text = ordered[0]
-        for t in ordered[1:]:
-            full_text += t[200:]
+        full_text = ordered[0] + "".join(t[200:] for t in ordered[1:])
         result[article_id] = {"title": title, "text": full_text}
 
     return result
@@ -92,7 +77,6 @@ def embed_chunks(
     chunk_chars: int,
     overlap_chars: int,
 ) -> tuple[np.ndarray, list[str]]:
-    """Embed all chunks for the given strategy. Returns (vectors, titles)."""
     all_texts: list[str] = []
     all_titles: list[str] = []
 
@@ -226,7 +210,6 @@ def main() -> None:
             f"  (n={scores['n_questions']})"
         )
 
-    # ── comparison table ──────────────────────────────────────────────────────
     print(f"\n{'=' * 72}")
     header = f"{'Strategy':<12} {'Chunks':>8} {'vec/s':>7}"
     header += f" {'nDCG@10':>9} {'Recall@10':>10} {'MRR':>8} {'N':>5}"

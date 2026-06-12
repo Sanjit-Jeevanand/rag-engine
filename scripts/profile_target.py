@@ -1,17 +1,3 @@
-"""
-Phase 4 — py-spy profiling target.
-
-Runs a sustained single-vector query loop so py-spy can sample the call
-stack and produce a flamegraph.  No timing, no tqdm — just the raw hot
-path that we want to see in the flamegraph.
-
-Run under py-spy:
-    py-spy record --output flamegraph.svg -- \
-        uv run python scripts/profile_target.py
-
-Open flamegraph.svg in any browser.
-"""
-
 from pathlib import Path
 
 import faiss
@@ -20,8 +6,8 @@ import numpy as np
 VECTORS_PATH = Path("data/vectors.bin")
 HNSW_PATH = Path("data/hnsw.index")
 VECTOR_DIM = 384
-N_QUERIES = 500  # pool size to cycle through
-N_ITERATIONS = 5_000  # total search() calls — enough for py-spy to sample
+N_QUERIES = 500
+N_ITERATIONS = 5_000  # enough for py-spy to sample
 K = 10
 SEED = 42
 

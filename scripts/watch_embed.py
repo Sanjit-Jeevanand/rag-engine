@@ -23,10 +23,8 @@ while True:
     speed = done / elapsed if elapsed > 1 else 0
     remaining = total - count
     if speed > 0:
-        eta_s = remaining / speed
-        h, m = divmod(int(eta_s), 3600)
-        m //= 60
-        eta_str = f"{h}h {m:02d}m"
+        s = int(remaining / speed)
+        eta_str = f"{s // 3600}h {s % 3600 // 60:02d}m"
     else:
         eta_str = "—"
 

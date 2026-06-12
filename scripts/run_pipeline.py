@@ -1,8 +1,3 @@
-"""
-Two-pass pipeline: selects the top MAX_ARTICLES Wikipedia articles by
-incoming_links (most-linked = most important), then ingests only those.
-"""
-
 from pathlib import Path
 
 from tqdm import tqdm
@@ -15,9 +10,8 @@ MAX_ARTICLES = 1_000_000
 SNAPSHOT = Path("data/wiki-dump.json.gz")
 DB = Path("data/docs.db")
 
-# ── Pass 1: collect (article_id, incoming_links) for all articles ────────────
 print("Pass 1: scanning incoming_links across all articles…")
-scores: list[tuple[int, str]] = []  # (incoming_links, article_id)
+scores: list[tuple[int, str]] = []
 
 for article in tqdm(parse_snapshot(SNAPSHOT), unit=" articles"):
     scores.append((article.incoming_links, article.article_id))
@@ -29,7 +23,6 @@ top_ids: set[str] = {aid for _, aid in scores[:MAX_ARTICLES]}
 cutoff = scores[MAX_ARTICLES - 1][0]
 print(f"  Keeping top {MAX_ARTICLES:,} — incoming_links cutoff: {cutoff:,}")
 
-# ── Pass 2: ingest only the top articles ─────────────────────────────────────
 print("Pass 2: ingesting top articles…")
 conn = init_db(DB)
 batch = []

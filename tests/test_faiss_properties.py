@@ -1,12 +1,3 @@
-"""
-Phase 3 — Property-based tests for the HNSW index.
-
-Uses a synthetic 10,000-vector corpus (same dimension as the real index)
-so tests run in CI without loading 8.8M vectors.  Hypothesis generates
-hundreds of random query indices and checks that the index properties hold
-for all of them.
-"""
-
 import faiss
 import numpy as np
 from hypothesis import given, settings
@@ -19,11 +10,6 @@ SEED = 42
 MIN_RECALL = 0.90  # minimum acceptable ANNS recall@10 vs exact search
 
 
-# ---------------------------------------------------------------------------
-# Module-level corpus and indexes — built once, reused across all tests
-# ---------------------------------------------------------------------------
-
-
 def _make_cluster_centres(n_clusters: int, dim: int, seed: int) -> np.ndarray:
     rng = np.random.default_rng(seed)
     c = rng.standard_normal((n_clusters, dim)).astype(np.float32)
@@ -34,16 +20,6 @@ def _make_cluster_centres(n_clusters: int, dim: int, seed: int) -> np.ndarray:
 def _sample_around_centres(
     n: int, centres: np.ndarray, noise: float, seed: int
 ) -> np.ndarray:
-    """
-    Sample n points near the shared cluster centres with Gaussian noise.
-
-    Corpus and queries MUST share the same centres so that query points
-    have well-defined nearest neighbours inside the corpus.
-
-    Noise std per-dimension.  Total noise magnitude = noise * sqrt(dim).
-    To keep points within ~10° of their centre in 384D:
-      sin(10°) ≈ 0.174  →  noise = 0.174 / sqrt(384) ≈ 0.009
-    """
     rng = np.random.default_rng(seed)
     n_clusters = len(centres)
     assignments = rng.integers(0, n_clusters, size=n)
@@ -59,54 +35,34 @@ NOISE = 0.009  # std per-dimension; total ≈ 0.009 * sqrt(384) ≈ 0.176 → ~1
 # Shared cluster centres — corpus and queries must use the same centres
 CENTRES = _make_cluster_centres(N_CLUSTERS, VECTOR_DIM, SEED)
 CORPUS = _sample_around_centres(N_CORPUS, CENTRES, NOISE, SEED + 1)
-
-# Separate query vectors not in the corpus
 N_QUERIES = 500
 QUERIES = _sample_around_centres(N_QUERIES, CENTRES, NOISE, SEED + 99)
 
-# Exact index — ground truth for recall measurement
 EXACT = faiss.IndexFlatL2(VECTOR_DIM)
 EXACT.add(CORPUS)
 
-# HNSW at the chosen operating point (ef=64)
 HNSW = faiss.IndexHNSWFlat(VECTOR_DIM, 32)
 HNSW.hnsw.efConstruction = 200
 HNSW.hnsw.efSearch = 64
 HNSW.add(CORPUS)
 
-# HNSW with intentionally bad ef — for the break-it test
 HNSW_BROKEN = faiss.IndexHNSWFlat(VECTOR_DIM, 32)
 HNSW_BROKEN.hnsw.efConstruction = 200
 HNSW_BROKEN.hnsw.efSearch = 2  # far too low — recall should collapse
 HNSW_BROKEN.add(CORPUS)
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 
 def _query(idx: int) -> np.ndarray:
-    """Return query row `idx` as a (1, dim) matrix."""
     return QUERIES[idx : idx + 1]
 
 
 def _recall(approx_ids: np.ndarray, true_ids: np.ndarray) -> float:
-    """Fraction of true top-K neighbours returned by the approximate index."""
     return len(set(approx_ids.tolist()) & set(true_ids.tolist())) / K
-
-
-# ---------------------------------------------------------------------------
-# Property 1 — always returns exactly K results
-# ---------------------------------------------------------------------------
 
 
 @given(st.integers(min_value=0, max_value=N_QUERIES - 1))
 @settings(max_examples=200)
 def test_hnsw_returns_exactly_k_results(query_idx: int) -> None:
-    """
-    For any query in the corpus, HNSW must return exactly K neighbours.
-    Hypothesis generates 200 random query indices to stress-test this.
-    """
     _, ids = HNSW.search(_query(query_idx), K)
     assert ids.shape == (
         1,
@@ -114,24 +70,8 @@ def test_hnsw_returns_exactly_k_results(query_idx: int) -> None:
     ), f"Expected (1, {K}) result shape, got {ids.shape} for query {query_idx}"
 
 
-# ---------------------------------------------------------------------------
-# Property 2 — average recall@10 >= 90% vs exact search
-# ---------------------------------------------------------------------------
-
-
 def test_hnsw_average_recall_meets_threshold() -> None:
-    """
-    HNSW at ef=64 must achieve >= 90% average recall@10 across all query vectors.
-
-    Per-query recall is NOT asserted because random high-dimensional vectors
-    suffer from the curse of dimensionality — in 384D, all unit vectors are
-    nearly equidistant, so some queries have no "clear" top-10, making
-    per-query recall noisy.  Average recall is the correct metric and matches
-    what the Phase 3 benchmark measured.
-
-    This test pins the efSearch parameter: lowering ef will drop the average
-    below the threshold and fail CI.
-    """
+    # Average recall, not per-query: curse of dimensionality makes per-query noisy.
     recalls = []
     for i in range(N_QUERIES):
         q = _query(i)
@@ -146,19 +86,10 @@ def test_hnsw_average_recall_meets_threshold() -> None:
     )
 
 
-# ---------------------------------------------------------------------------
-# Property 3 — deterministic: same query always returns same results
-# ---------------------------------------------------------------------------
-
-
 @given(st.integers(min_value=0, max_value=N_QUERIES - 1))
 @settings(max_examples=100)
 def test_hnsw_is_deterministic(query_idx: int) -> None:
-    """
-    Running the same query twice must produce identical results.
-    HNSW has no randomness at search time — this catches any accidental
-    global state mutation.
-    """
+    # HNSW has no randomness at search time — catches accidental global state mutation
     q = _query(query_idx)
     _, ids_first = HNSW.search(q, K)
     _, ids_second = HNSW.search(q, K)
@@ -168,18 +99,8 @@ def test_hnsw_is_deterministic(query_idx: int) -> None:
     )
 
 
-# ---------------------------------------------------------------------------
-# Break-it — ef=2 collapses recall below 50%
-# ---------------------------------------------------------------------------
-
-
 def test_hnsw_broken_ef_collapses_recall() -> None:
-    """
-    efSearch=2 must produce significantly worse recall than efSearch=64.
-    Tests the relative gap rather than an absolute floor, which is more
-    robust across corpus sizes — small corpora need fewer hops to navigate
-    so the absolute recall at ef=2 varies, but the gap vs ef=64 is stable.
-    """
+    # Relative gap, not absolute floor: gap vs ef=64 is stable across corpus sizes.
     rng = np.random.default_rng(SEED + 1)
     sample_indices = rng.choice(N_QUERIES, size=100, replace=False)
 

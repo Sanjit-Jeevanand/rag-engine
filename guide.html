@@ -158,6 +158,21 @@
   .concept { background: var(--bg-soft); border: 1px solid var(--border); border-radius: 11px; padding: 14px 15px; }
   .concept h5 { margin: 0 0 5px; font-size: 14px; color: var(--accent); }
   .concept p { margin: 0; font-size: 13px; color: var(--muted); }
+  .file-list { display: grid; gap: 7px; margin-top: 10px; }
+  .file-item { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); cursor: pointer; transition: border-color .12s; }
+  .file-item:hover { border-color: var(--accent); }
+  .file-item input:checked ~ .cbox { background: var(--green); border-color: var(--green); color: #04121f; }
+  .file-item input:checked ~ .file-info code { color: var(--green); }
+  .file-info { display: flex; flex-direction: column; gap: 2px; }
+  .file-info code { font-size: 13px; }
+  .file-desc { font-size: 12px; color: var(--muted); }
+  .file-count { font-family: var(--mono); font-size: 12px; color: var(--green); margin-left: 10px; }
+  .file-note { font-size: 12.5px; color: var(--faint); margin: 0 0 10px; font-style: italic; }
+  .cmd-list { display: grid; gap: 8px; margin-top: 10px; }
+  .cmd-block { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 13px; cursor: pointer; transition: border-color .12s; }
+  .cmd-block:hover { border-color: var(--accent); }
+  .cmd-block code { display: block; font-size: 13px; color: var(--accent); margin-bottom: 4px; word-break: break-all; }
+  .cmd-block .cmd-desc { font-size: 12px; color: var(--muted); }
   footer { text-align: center; color: var(--faint); font-size: 13px; margin-top: 60px; }
   #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--panel-2); border: 1px solid var(--border); color: var(--text); padding: 11px 18px; border-radius: 10px; font-size: 14px; box-shadow: var(--shadow); opacity: 0; pointer-events: none; transition: .3s; z-index: 100; }
   #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
@@ -336,7 +351,7 @@ const PHASES = [
   { n:0, core:true, star:false,
     title:'Engineering foundations and quality gates',
     goal:'A repo where it is impossible to merge broken, untyped, unformatted, or insecure code — and where a failing eval score blocks a merge just like a failing test.',
-    build:['<code>uv</code>-managed project, pinned lockfile, Python 3.12, clear layout (<code>src/</code>, <code>eval/</code>, <code>tests/</code>, <code>infra/</code>, <code>docs/adr/</code>).','Wire <code>ruff</code>, <code>mypy --strict</code>, <code>pytest</code>, <code>pip-audit</code> behind a <code>Makefile</code>.','<code>pre-commit</code> hooks locally; GitHub Actions on every push/PR.','<code>pydantic-settings</code> config (12-factor); structured JSON logging with <code>request_id</code> from line one.','<b>Eval gate placeholder</b>: a dummy eval script that fails if a sentinel metric file is missing. Real gate fills in Phase 2; the habit is enforced from day one.'],
+    build:['<code>uv</code>-managed project, pinned lockfile, Python 3.12, clear layout (<code>src/</code>, <code>eval/</code>, <code>tests/</code>, <code>infra/</code>, <code>docs/adr/</code>).','Wire <code>ruff</code>, <code>mypy --strict</code>, <code>pytest</code>, <code>pip-audit</code> behind a <code>Makefile</code>.','<code>pre-commit</code> hooks locally; GitHub Actions on every push/PR.','<code>pydantic-settings</code> config (12-factor); structured JSON logging with <code>request_id</code> from line one.','<b>Eval gate placeholder</b>: a dummy eval script that fails if a sentinel metric file is missing. Real gate fills in Phase 2; the habit is enforced from day one.','<b>Python files created:</b> <code>src/rag_engine/__init__.py</code> · <code>src/rag_engine/config.py</code> (pydantic-settings, env-overridable via RAG_* prefix) · <code>src/rag_engine/log.py</code> (structlog, request_id context var) · <code>eval/gate.py</code> (eval sentinel check) · <code>tests/test_smoke.py</code> (settings defaults + uuid binding)'],
     why:`The same shift-left argument as any production system, plus an ML-specific addition: <span class="term">eval gates in CI</span> are the ML equivalent of unit tests — they make retrieval and generation regressions unmerge-able. Most ML projects treat evals as notebooks run manually before a demo. Wiring them as a CI gate from day one changes the workflow permanently. The <code>eval/</code> folder exists before any retrieval code so every phase inherits it.`,
     alts:[['pre-commit + CI + eval gate placeholder (chosen)','Shift-left; eval is a first-class gate, not an afterthought.','Upfront setup cost.','✓ pick'],['"Add tests/CI later"','Move fast early','Quality and eval debt compound; retrofitting is partial.','✗'],['CI only, no pre-commit','One place to maintain','Slow feedback; push then wait for red.',''],['No eval gate','Fewer gates','Retrieval regressions go undetected.','✗ skip']],
     choice:`uv for reproducible locked deps; ruff + mypy-strict + pytest + pip-audit as the quality gate; pre-commit (fast local) + CI (authoritative); and an eval gate placeholder that will hold the real BEIR/faithfulness comparator starting Phase 2. Structured logging + typed config exist before any feature.`,
@@ -344,7 +359,28 @@ const PHASES = [
     breakit:`Open a PR with a type error and an unformatted file — watch CI go red and block the merge. That red check without anyone remembering to run anything is the point.`,
     learn:['quality gates','shift-left testing','eval gates in CI (the ML-specific extension)','12-factor config','tooling-as-code'],
     qs:[['Why enforce eval gates in CI from day one?','Because retrieval regressions are silent — a code change that hurts nDCG@10 by 0.05 doesn\'t throw an exception. Without a CI gate, you only notice when a demo breaks. Wiring it in from the start means every PR is measured against the baseline, just like a test.'],['Why enforce checks in pre-commit AND CI?','pre-commit gives fast local feedback but can be bypassed with --no-verify. CI is the authoritative, unskippable gate in a clean environment. Together: fast feedback locally, guaranteed enforcement centrally.'],['What does mypy --strict prevent that regular mypy doesn\'t?','--strict enables all optional checks: disallowed-untyped-defs, disallowed-any-generics, warn-return-any, and more. Regular mypy lets you skip type annotations and use Any freely. Strict makes the type checker actually catch contract bugs.']],
-    bullet:'Set up a quality-gated Python pipeline (ruff / mypy-strict / pytest / pip-audit + eval gate) enforced via pre-commit + GitHub Actions, blocking non-conforming and regressing merges.' },
+    bullet:'Set up a quality-gated Python pipeline (ruff / mypy-strict / pytest / pip-audit + eval gate) enforced via pre-commit + GitHub Actions, blocking non-conforming and regressing merges.',
+    files:[
+      { path:'pyproject.toml', desc:'uv project manifest + pinned deps' },
+      { path:'uv.lock', desc:'locked dependency graph (auto-generated by uv)' },
+      { path:'.python-version', desc:'Python 3.12 pin' },
+      { path:'Makefile', desc:'lint / typecheck / test / audit / eval-gate / ci targets' },
+      { path:'.pre-commit-config.yaml', desc:'ruff + mypy + pip-audit hooks' },
+      { path:'.github/workflows/ci.yml', desc:'CI: lint → type → test → pip-audit → eval-gate' },
+      { path:'src/rag_engine/__init__.py', desc:'package root' },
+      { path:'src/rag_engine/config.py', desc:'pydantic-settings, RAG_* env prefix' },
+      { path:'src/rag_engine/log.py', desc:'structlog + request_id context var' },
+      { path:'eval/gate.py', desc:'eval sentinel gate — fails if latest.json is missing' },
+      { path:'tests/test_smoke.py', desc:'settings defaults + uuid binding' },
+    ],
+    commands:[
+      { cmd:'make ci', desc:'Run full pipeline: lint → typecheck → test → audit → eval-gate' },
+      { cmd:'make lint', desc:'ruff check + ruff format --check' },
+      { cmd:'make typecheck', desc:'mypy --strict over src/' },
+      { cmd:'make test', desc:'pytest (excludes FAISS property tests)' },
+      { cmd:'make audit', desc:'pip-audit — scan deps for CVEs' },
+      { cmd:'make eval-gate', desc:'Check eval/results/latest.json has sentinel key' },
+    ] },
 
   { n:1, core:true, star:false,
     title:'Corpus ingestion and embedding pipeline',
@@ -357,7 +393,35 @@ const PHASES = [
     breakit:`Corrupt a document mid-ingest (truncate its text), restart the pipeline — confirm it re-embeds only the failed document, not the whole corpus. This is the idempotency guarantee made concrete.`,
     learn:['corpus ingestion patterns','batched async I/O','mmap for large vector files','idempotent pipelines','why sentence-transformers and what bge-large does'],
     qs:[['Why mmap instead of loading all vectors into RAM?','With 6M 1024-dim float32 vectors the array is about 24 GB. Loading it all into RAM at startup is slow and wastes memory if you only access a fraction. mmap lets the OS page in only the rows you actually touch, using the file as the backing store. On a warm run the hot pages stay in the OS page cache.'],['Why bge-large-en-v1.5 instead of OpenAI embeddings?','bge-large is open-source — you can run it locally, embed offline, and reproduce results without an API call or cost. OpenAI embeddings require a live API, have rate limits, cost money per token, and change model versions without notice. For a benchmarked system, reproducibility matters.'],['What does idempotent mean in an ingestion pipeline, and why is it important at 6M docs?','Idempotent means processing the same document twice produces the same result and has no additional side effects. At 6M docs, any crash requires a restart — if the pipeline isn\'t idempotent, you re-process everything. Tracking status per document in the DB lets you skip already-embedded docs and resume exactly where you left off.']],
-    bullet:'Ingested and embedded a 6M+ article Wikipedia corpus via an idempotent, resumable async pipeline, storing 1024-dim float32 vectors in a memory-mapped flat file.' },
+    bullet:'Ingested and embedded a 6M+ article Wikipedia corpus via an idempotent, resumable async pipeline, storing 1024-dim float32 vectors in a memory-mapped flat file.',
+    files:[
+      { path:'src/rag_engine/ingest/__init__.py', desc:'ingest package root' },
+      { path:'src/rag_engine/ingest/schema.py', desc:'SQLite schema + init_db' },
+      { path:'src/rag_engine/ingest/downloader.py', desc:'httpx resumable download' },
+      { path:'src/rag_engine/ingest/parser.py', desc:'CirrusSearch JSONL parser' },
+      { path:'src/rag_engine/ingest/pipeline.py', desc:'two-pass chunk + insert pipeline' },
+      { path:'src/rag_engine/ingest/embedder.py', desc:'batched bge-small embedder, MPS/CPU' },
+      { path:'scripts/download_wiki_dump.py', desc:'one-shot download with resume' },
+      { path:'scripts/run_pipeline.py', desc:'rank by incoming_links, ingest top-1M' },
+      { path:'scripts/run_embedder.py', desc:'embed pending chunks → data/vectors.bin' },
+      { path:'scripts/watch_embed.py', desc:'live embedding progress dashboard' },
+      { path:'scripts/sample_links.py', desc:'inspect incoming_links distribution' },
+      { path:'tests/test_downloader.py', desc:'downloader unit tests' },
+      { path:'tests/test_parser.py', desc:'parser unit tests' },
+      { path:'tests/test_schema.py', desc:'schema unit tests' },
+      { path:'tests/test_pipeline.py', desc:'pipeline unit tests' },
+      { path:'tests/test_embedder.py', desc:'embedder unit tests' },
+      { path:'tests/test_integration.py', desc:'end-to-end 1k-doc integration test' },
+      { path:'tests/test_break_it.py', desc:'forced failure regression tests' },
+    ],
+    commands:[
+      { cmd:'python scripts/download_wiki_dump.py', desc:'Download ~20 GB Wikipedia CirrusSearch dump (resumable on Ctrl-C)' },
+      { cmd:'PYTHONPATH=src:. uv run python scripts/sample_links.py', desc:'Inspect incoming_links distribution on 50K sample — pick the cutoff' },
+      { cmd:'PYTHONPATH=src:. uv run python scripts/run_pipeline.py', desc:'Two-pass ingest: rank by links → chunk top-1M articles → SQLite' },
+      { cmd:'PYTHONPATH=src:. uv run python scripts/run_embedder.py', desc:'Embed all pending chunks to data/vectors.bin (resumable)' },
+      { cmd:'PYTHONPATH=src:. uv run python scripts/watch_embed.py', desc:'Live progress dashboard — run in a second terminal while embedding' },
+      { cmd:'make test', desc:'Run all unit + integration tests' },
+    ] },
 
   { n:2, core:true, star:false,
     title:'Evaluation harness — the gate that makes everything honest',
@@ -370,7 +434,26 @@ const PHASES = [
     breakit:`Introduce a retrieval bug that returns random documents — watch nDCG@10 collapse from ~0.7 to ~0.05 and the CI gate block the merge. That block is the point: the system is now self-defending.`,
     learn:['BEIR as the standard IR benchmark','nDCG@10 vs Recall@10 vs MRR','RAGAS faithfulness','eval-in-CI (the ML extension of test gates)','why public benchmarks matter for credibility','exact-match as a reproducible generation metric'],
     qs:[['What is nDCG@10 and why use it over Recall@10?','Normalized Discounted Cumulative Gain weights results by position — a relevant doc at rank 1 contributes more than one at rank 10. Recall@10 just counts whether any relevant doc appears in the top 10 (position-agnostic). nDCG@10 is the standard BEIR metric because ranking quality matters: you\'re passing the top-5 to the LLM, so rank-1 accuracy matters more than rank-10.'],['Why use an LLM judge for faithfulness instead of exact match?','Exact match checks whether the answer string matches a reference — it fails on paraphrases, abbreviations, and valid alternative formulations. Faithfulness asks: "is every claim in the answer grounded in the retrieved passages?" — a semantics question that requires reading comprehension. An LLM judge does this at scale without needing gold answers for every query.'],['Why build the eval harness before retrieval, not after?','Building after is optimizing for a goal you haven\'t defined. You make changes, eyeball some outputs, and assume things got better. Building first forces you to say precisely what "better" means (nDCG@10, faithfulness, cost) before touching retrieval. Every subsequent change has a measured before/after — the scientific method applied to ML systems engineering.']],
-    bullet:'Built a BEIR retrieval eval + RAGAS-style faithfulness harness wired into CI as a regression gate, blocking merges that drop nDCG@10 or faithfulness below threshold.' },
+    bullet:'Built a BEIR retrieval eval + RAGAS-style faithfulness harness wired into CI as a regression gate, blocking merges that drop nDCG@10 or faithfulness below threshold.',
+    files:[
+      { path:'eval/__init__.py', desc:'eval package root' },
+      { path:'eval/metrics.py', desc:'nDCG@10, Recall@10, MRR, exact-match, F1' },
+      { path:'eval/index.py', desc:'VectorIndex — FAISS + dedup search over corpus' },
+      { path:'eval/hotpotqa_eval.py', desc:'run HotpotQA gold set through the index' },
+      { path:'eval/comparator.py', desc:'CI gate — fails build on metric regression' },
+      { path:'eval/hotpotqa_gold.json', desc:'1,000 curated HotpotQA questions (seeded)' },
+      { path:'eval/results/baseline.json', desc:'stored baseline scores for comparator' },
+      { path:'scripts/seed_gold_set.py', desc:'build HotpotQA gold set from HuggingFace' },
+      { path:'scripts/beir_eval.py', desc:'BEIR baseline: SciFact + NFCorpus nDCG@10' },
+      { path:'scripts/run_ablation.py', desc:'chunking ablation — A-1500 vs B-500 vs C-300' },
+    ],
+    commands:[
+      { cmd:'PYTHONPATH=src:. uv run python scripts/seed_gold_set.py', desc:'Download HotpotQA dev set and seed 1,000 gold questions into eval/hotpotqa_gold.json' },
+      { cmd:'PYTHONPATH=src:. uv run python scripts/beir_eval.py', desc:'Run BEIR baseline on SciFact + NFCorpus and save to eval/results/beir_baseline.json' },
+      { cmd:'PYTHONPATH=src:. uv run python eval/hotpotqa_eval.py', desc:'Evaluate against the HotpotQA gold set; save scores to eval/results/latest.json' },
+      { cmd:'PYTHONPATH=src:. uv run python eval/comparator.py', desc:'CI regression gate — exits 1 if any metric drops beyond tolerance vs baseline' },
+      { cmd:'PYTHONPATH=src:. uv run python scripts/run_ablation.py', desc:'Chunking ablation study across three strategies (A-1500, B-500, C-300)' },
+    ] },
 
   { n:3, core:true, star:false,
     title:'FAISS index setup, type comparison, and first benchmarks',
@@ -383,7 +466,20 @@ const PHASES = [
     breakit:`Set <code>ef=2</code> on IndexHNSWFlat — watch recall@10 collapse below 50%. Set <code>nprobe=1</code> on IndexIVFFlat — same. Both captured as parameterized regression tests. This is the recall-speed trade-off made concrete in your own benchmarks.`,
     learn:['FAISS index hierarchy','IndexFlatL2 vs IndexHNSWFlat vs IndexIVFPQ','recall-latency Pareto curve','ef and nprobe as the recall-speed knobs','product quantization trade-offs','index persistence with write_index/read_index'],
     qs:[['What is the difference between IndexHNSWFlat and IndexIVFPQ in FAISS?','IndexHNSWFlat is graph-based: no training step, high recall, O(log n) search, but stores the full graph so uses more memory. IndexIVFPQ clusters vectors into nlist Voronoi cells (inverted file) at training time, then compresses each vector with product quantization — dramatically smaller index (6M 1024-dim vectors shrinks from ~24 GB to under 2 GB). The trade-off: requires training, nprobe tuning, and has slight recall loss from quantization.'],['What is product quantization and when does it help?','PQ splits each vector into subvectors and replaces each with a centroid index from a learned codebook. Combined with the inverted file (IndexIVFPQ), it reduces memory by 10–20x. Useful when RAM is the binding constraint. The cost: slight recall loss and decompression overhead at query time.'],['What is the recall-latency Pareto curve and why plot it before optimizing?','For a given index, different parameters (ef, nprobe) produce different recall@10 and latency pairs. The Pareto frontier is the set where no other setting is both faster and higher recall. You pick your operating point from this curve based on your SLO (latency budget and recall floor). Phase 4 then optimizes throughput at that operating point — not a random setting.']],
-    bullet:'Benchmarked FAISS IndexFlatL2, IndexHNSWFlat, and IndexIVFPQ over a 6M+ Wikipedia corpus; plotted the recall-latency Pareto curve per index type; property-tested recall@10 >= 95% vs brute-force at the chosen operating point. (→ outcome ①)' },
+    bullet:'Benchmarked FAISS IndexFlatL2, IndexHNSWFlat, and IndexIVFPQ over a 6M+ Wikipedia corpus; plotted the recall-latency Pareto curve per index type; property-tested recall@10 >= 95% vs brute-force at the chosen operating point. (→ outcome ①)',
+    files:[
+      { path:'scripts/benchmark_faiss.py', desc:'FlatL2 / HNSW / IVFPQ benchmark; Pareto curve; recall@10 vs latency table' },
+      { path:'scripts/build_hnsw_index.py', desc:'Build and persist IndexHNSWFlat (M=32, ef=200) to data/hnsw.index' },
+      { path:'scripts/sample_retrieval.py', desc:'Smoke-test retrieval against a handful of dev queries' },
+      { path:'tests/test_faiss_properties.py', desc:'Property tests: average recall >= 95%, determinism, broken-ef regression' },
+      { path:'data/hnsw.index', desc:'Persisted IndexHNSWFlat — 8.8M vectors, 15.9 GB on disk' },
+    ],
+    commands:[
+      { cmd:'PYTHONPATH=src:. uv run python scripts/build_hnsw_index.py', desc:'Build HNSW index from data/vectors.bin and save to data/hnsw.index' },
+      { cmd:'PYTHONPATH=src:. uv run python scripts/benchmark_faiss.py', desc:'Benchmark FlatL2 / HNSW / IVFPQ on 1,000 queries and print the Pareto table' },
+      { cmd:'PYTHONPATH=src:. uv run python scripts/sample_retrieval.py', desc:'Smoke-test top-10 retrieval on a few sample queries' },
+      { cmd:'make test-faiss', desc:'Run FAISS property tests (recall, determinism, broken-ef regression)' },
+    ] },
 
   { n:4, core:true, star:true,
     title:'Profile, tune, and tell the optimization story',
@@ -396,7 +492,23 @@ const PHASES = [
     breakit:`Remove batching — watch QPS collapse to the Phase 3 single-vector baseline. That collapse is the concrete value of the fix: the before/after is reproducible and verifiable. Then push past the concurrency limit — confirm load shedding from Phase 8 holds and latency stays bounded.`,
     learn:['FAISS batched vs single-vector search','BLAS throughput and why batching matters','py-spy flamegraphs for ML systems','profiling before optimizing','perf regression budgets','the optimization story as a resume differentiator'],
     qs:[['Why is batching FAISS queries so impactful?','FAISS is built around BLAS — highly optimized C++ and Fortran routines for matrix operations. A single-vector search is a vector-matrix multiply. A batched search (n queries at once) is a matrix-matrix multiply — BLAS can use SIMD, multi-threading, and cache-level optimizations unavailable for single vectors. Batching 64 queries is often 5–20× faster per query than 64 individual calls.'],['How do you find the bottleneck in a FAISS query path?','Run the query loop under load with py-spy; generate a flamegraph. The widest bar is the bottleneck. In an un-batched FAISS setup it\'s almost always the Python call overhead and single-vector search. Once batched, the next bottleneck is typically the Python-to-FAISS binding layer or thread count. Fix the widest bar first; re-profile to confirm.'],['What is a perf-regression budget and why add it to CI?','A CI step that benchmarks throughput and fails if QPS drops below a threshold (e.g. 90% of the set baseline). Without it, a future refactor that un-batches the search or reduces thread count silently tanks QPS — visible only in production. The budget makes performance a first-class constraint that every future change must respect.']],
-    bullet:'Profiled FAISS under load, found un-batched single-vector queries wasting BLAS throughput via flamegraph, batched the search path for 3× QPS — reaching recall@10 >= 97% at P99 < 5 ms, 2,000+ QPS; added a CI perf regression budget. (→ outcome ① · ★ Diff 1)' },
+    bullet:'Profiled FAISS under load, found un-batched single-vector queries wasting BLAS throughput via flamegraph, batched the search path for 3× QPS — reaching recall@10 >= 97% at P99 < 5 ms, 2,000+ QPS; added a CI perf regression budget. (→ outcome ① · ★ Diff 1)',
+    files:[
+      { path:'scripts/throughput_baseline.py', desc:'Concurrency sweep c=1/4/8/…; QPS + p50/p99 table' },
+      { path:'scripts/profile_target.py', desc:'5,000-iteration search loop designed to be run under py-spy' },
+      { path:'scripts/throughput_batched.py', desc:'Batch size sweep 1→512; best batch at c=1/4/8' },
+      { path:'scripts/throughput_ivfpq.py', desc:'IVFPQ vs HNSW three-way recall / mem / QPS tradeoff' },
+      { path:'scripts/perf_check.py', desc:'--record: store QPS baseline; check: fail if QPS drops >10% or p99 >5ms' },
+      { path:'eval/results/perf_baseline.json', desc:'19,463 QPS baseline; floor 17,516 QPS; p99 budget 5ms' },
+    ],
+    commands:[
+      { cmd:'PYTHONPATH=src:. uv run python scripts/throughput_baseline.py', desc:'Measure QPS and latency at concurrency 1/4/8/10/12/16' },
+      { cmd:'sudo .venv/bin/py-spy record --output flamegraph.svg -- .venv/bin/python scripts/profile_target.py', desc:'Capture flamegraph of the search loop (requires sudo on macOS)' },
+      { cmd:'PYTHONPATH=src:. uv run python scripts/throughput_batched.py', desc:'Sweep batch sizes 1→512 and print the QPS multiplier table' },
+      { cmd:'PYTHONPATH=src:. uv run python scripts/throughput_ivfpq.py', desc:'Build/load IVFPQ and compare throughput vs HNSW at each nprobe' },
+      { cmd:'PYTHONPATH=src:. uv run python scripts/perf_check.py --record', desc:'Record current throughput as the perf baseline' },
+      { cmd:'make perf', desc:'Run perf regression gate — fails if QPS drops >10% or p99 >5ms' },
+    ] },
 
   { n:5, core:true, star:false,
     title:'Hybrid retrieval pipeline (BM25 + dense + cross-encoder reranking)',
@@ -409,7 +521,18 @@ const PHASES = [
     breakit:`Remove the reranker — watch nDCG@10 drop ~0.08 on SciFact and faithfulness drop. Capture as an eval regression test with the reranker toggled off. This makes the reranker's value concrete and pins the dependency.`,
     learn:['BM25 and sparse retrieval','why dense-only misses keyword queries','RRF vs score normalization','bi-encoder vs cross-encoder (quality vs cost)','the retrieve-then-rerank pattern','consumer lag parallel: retrieval quality as a first-class operational metric'],
     qs:[['Why does dense retrieval miss keyword-exact queries?','Dense embeddings capture semantic meaning — "automobile" and "car" land close together. But acronyms, version numbers, product codes, and rare named entities have embeddings trained on few examples and may not cluster correctly. BM25 treats "AWS EC2 t3.micro" as a term-frequency problem — exact match works perfectly. Hybrid gets both.'],['Why RRF instead of normalizing and adding scores?','Score normalization requires knowing the score distributions in advance, is sensitive to outliers, and needs tuning for each corpus. RRF is parameter-free: it maps each result to 1/(rank + k) and sums across lists. Any result appearing in both lists gets a high fused rank regardless of its absolute score in either. It\'s robust to scale differences and works without tuning.'],['Why a cross-encoder instead of a second bi-encoder pass for reranking?','A bi-encoder encodes query and passage independently — fast, but the interaction between them is only computed at similarity. A cross-encoder takes the query and passage concatenated as input — the model attends to both together, enabling much richer relevance signals. The cost is O(n) cross-encoder calls per query vs O(1) bi-encoder similarity — so you rerank a small set (top-20), not the full corpus.']],
-    bullet:'Built a hybrid BM25 + HNSW dense retrieval pipeline with RRF fusion and cross-encoder reranking, measured on BEIR; nDCG@10 +0.20 over dense-only on SciFact and NFCorpus.' },
+    bullet:'Built a hybrid BM25 + HNSW dense retrieval pipeline with RRF fusion and cross-encoder reranking, measured on BEIR; nDCG@10 +0.20 over dense-only on SciFact and NFCorpus.',
+    files:[
+      { path:'src/rag_engine/retrieval.py', desc:'BM25Retriever (bm25s), DenseRetriever, CrossEncoderReranker, reciprocal_rank_fusion' },
+      { path:'scripts/beir_hybrid_eval.py', desc:'BEIR staircase: SciFact + NFCorpus, dense / hybrid / hybrid+rerank' },
+      { path:'scripts/hotpotqa_hybrid_eval.py', desc:'HotpotQA staircase: dense / hybrid / hybrid+rerank on 1,000 dev questions' },
+      { path:'eval/results/beir_staircase.json', desc:'BEIR results: nDCG@10 per pipeline per dataset' },
+      { path:'eval/results/hotpotqa_staircase.json', desc:'HotpotQA results: nDCG@10 0.4618 → 0.5398 → 0.7035' },
+    ],
+    commands:[
+      { cmd:'PYTHONPATH=src:. uv run python scripts/beir_hybrid_eval.py', desc:'Run BEIR staircase on SciFact + NFCorpus and save to eval/results/beir_staircase.json' },
+      { cmd:'PYTHONPATH=src:. uv run python scripts/hotpotqa_hybrid_eval.py', desc:'Run HotpotQA staircase on 1,000 dev questions and save to eval/results/hotpotqa_staircase.json' },
+    ] },
 
   { n:6, core:true, star:true,
     title:'Agentic multi-hop RAG (iterative retrieve-reason-retrieve)',
@@ -529,9 +652,10 @@ let state = loadState();
 const ALL_TARGETS = OUTCOMES.concat(DIFFERENTIATORS);
 
 function loadState(){
-  let s = { done:{}, notes:{}, targets:{}, updated:null };
+  let s = { done:{}, notes:{}, targets:{}, files:{}, updated:null };
   try { const raw = localStorage.getItem(LS_KEY); if(raw) s = Object.assign(s, JSON.parse(raw)); } catch(e){}
   if(!s.targets) s.targets = {};
+  if(!s.files) s.files = {};
   return s;
 }
 function saveState(){
@@ -644,6 +768,8 @@ PHASES.forEach(p => {
         <div class="tab" data-tab="break">&#128293; Break it</div>
         <div class="tab" data-tab="qa">&#127919; Interview Q&amp;A</div>
         <div class="tab" data-tab="bullet">&#128196; Resume bullet</div>
+        ${p.files ? '<div class="tab" data-tab="files">&#128193; Files</div>' : ''}
+        ${p.commands ? '<div class="tab" data-tab="cmds">&#9889; Commands</div>' : ''}
       </div>
       <div class="tabpane active" data-pane="build"><div class="panel-card"><h5>What you build</h5><ul>${p.build.map(b=>`<li>${b}</li>`).join('')}</ul><p style="margin-top:10px;color:var(--faint);font-size:13px">Concepts: ${learnChips}</p></div></div>
       <div class="tabpane" data-pane="why"><div class="panel-card why"><h5>&#128161; Why we do this</h5><p>${p.why}</p></div></div>
@@ -653,6 +779,8 @@ PHASES.forEach(p => {
       <div class="tabpane" data-pane="break"><div class="panel-card break"><h5>&#128293; Force the failure &mdash; then pin it with a test or eval regression</h5><p>${p.breakit}</p></div></div>
       <div class="tabpane" data-pane="qa"><p style="color:var(--muted);font-size:13px;margin:0 0 12px">Tap a question to reveal the answer &mdash; quiz yourself first.</p>${qaItems}</div>
       <div class="tabpane" data-pane="bullet"><div class="bullet-box"><div class="lbl">Resume bullet earned</div><p>"${p.bullet}"</p></div></div>
+      ${p.files ? `<div class="tabpane" data-pane="files"><div class="panel-card"><h5>&#128193; Files to create <span class="file-count" id="fc-${p.n}">0/${p.files.length} written</span></h5><p class="file-note">Check off each file as you write it — progress saved in your browser.</p><div class="file-list">${p.files.map((f,i)=>`<label class="checkwrap file-item"><input type="checkbox" class="file-check" data-fi="${i}" ${(state.files[p.n]||{})[i]?'checked':''}/><span class="cbox">&#10003;</span><span class="file-info"><code>${f.path}</code><span class="file-desc">${f.desc}</span></span></label>`).join('')}</div></div></div>` : ''}
+      ${p.commands ? `<div class="tabpane" data-pane="cmds"><div class="panel-card"><h5>&#9889; Commands</h5><div class="cmd-list">${p.commands.map(c=>`<div class="cmd-block" title="Click to copy" onclick="navigator.clipboard.writeText('${c.cmd.replace(/'/g,"\\'")}').then(()=>toast('Copied!'))"><code>${c.cmd}</code><span class="cmd-desc">${c.desc}</span></div>`).join('')}</div></div></div>` : ''}
       <div class="phase-controls">
         <label class="checkwrap"><input type="checkbox" class="phase-check" ${isDone?'checked':''}/><span class="cbox">&#10003;</span><span>I understand this phase &amp; can explain it</span></label>
         <span class="saved-flag">saved &#10003;</span>
@@ -684,6 +812,22 @@ PHASES.forEach(p => {
   const ta = phase.querySelector('textarea');
   let tmr;
   ta.addEventListener('input', ()=>{ state.notes[p.n] = ta.value; clearTimeout(tmr); tmr = setTimeout(()=>{ saveState(); flash(savedFlag); }, 500); });
+  if(p.files){
+    const updateFileCount = () => {
+      const done = Object.keys(state.files[p.n]||{}).length;
+      const el = document.getElementById(`fc-${p.n}`);
+      if(el) el.textContent = `${done}/${p.files.length} written`;
+    };
+    phase.querySelectorAll('.file-check').forEach(cb => {
+      cb.addEventListener('change', () => {
+        if(!state.files[p.n]) state.files[p.n] = {};
+        if(cb.checked) state.files[p.n][cb.dataset.fi] = true;
+        else delete state.files[p.n][cb.dataset.fi];
+        saveState(); updateFileCount(); flash(savedFlag);
+      });
+    });
+    updateFileCount();
+  }
 });
 
 const conceptGrid = document.getElementById('conceptGrid');

@@ -12,7 +12,7 @@ class WikiArticle:
     text: str
     categories: str
     timestamp: str
-    incoming_links: int = 0  # number of other Wikipedia articles linking here
+    incoming_links: int = 0
 
 
 def parse_snapshot(path: Path) -> Iterator[WikiArticle]:
