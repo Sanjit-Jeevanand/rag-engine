@@ -3,174 +3,333 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>RAG Engine — Wikipedia QA</title>
+<title>RAG Engine — ask a million Wikipedia articles</title>
+<meta name="description" content="Hybrid HNSW + BM25 retrieval, cross-encoder reranking, and a hand-rolled multi-hop agent that cites its sources — or refuses to answer.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%236366f1'/%3E%3Cstop offset='1' stop-color='%2322d3ee'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='16' cy='16' r='13' fill='url(%23g)'/%3E%3Ccircle cx='16' cy='16' r='5.5' fill='%2307090e'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #0a0c10;
-    --card: rgba(255,255,255,0.03);
-    --card-hover: rgba(255,255,255,0.05);
-    --border: rgba(255,255,255,0.08);
-    --text: #e7eaf0;
-    --muted: #8b93a7;
-    --accent1: #6366f1;
-    --accent2: #22d3ee;
-    --green: #34d399;
-    --amber: #fbbf24;
-    --red: #f87171;
+    --bg: #07090e;
+    --panel: rgba(255,255,255,0.027);
+    --panel-2: rgba(255,255,255,0.05);
+    --line: rgba(255,255,255,0.075);
+    --line-2: rgba(255,255,255,0.13);
+    --text: #e9ecf3;
+    --mut: #8e96ab;
+    --dim: #5d6478;
+    --ix: #6366f1;
+    --cy: #22d3ee;
+    --gn: #34d399;
+    --am: #fbbf24;
+    --rd: #f87171;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html { scroll-behavior: smooth; }
   body {
     background: var(--bg);
-    background-image: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99,102,241,0.14), transparent);
     color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-feature-settings: "cv11";
     min-height: 100vh;
-    padding: 0 24px 80px;
+    overflow-x: hidden;
   }
-  .wrap { max-width: 1060px; margin: 0 auto; }
+  ::selection { background: rgba(99,102,241,0.4); }
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 
-  /* ── header ─────────────────────────────────────────── */
-  header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 22px 0; flex-wrap: wrap; gap: 12px;
+  /* ── background ───────────────────────────────────────── */
+  .bg-aurora, .bg-grid {
+    position: fixed; inset: 0; pointer-events: none; z-index: 0;
   }
-  .brand { display: flex; align-items: center; gap: 10px; }
-  .brand .dot {
-    width: 9px; height: 9px; border-radius: 50%; background: var(--green);
+  .bg-aurora::before, .bg-aurora::after {
+    content: ""; position: absolute; border-radius: 50%;
+    filter: blur(90px); opacity: 0.55;
+  }
+  .bg-aurora::before {
+    width: 760px; height: 520px; left: 50%; top: -300px;
+    transform: translateX(-72%);
+    background: radial-gradient(closest-side, rgba(99,102,241,0.30), transparent);
+    animation: drift1 26s ease-in-out infinite alternate;
+  }
+  .bg-aurora::after {
+    width: 640px; height: 460px; left: 50%; top: -260px;
+    transform: translateX(-12%);
+    background: radial-gradient(closest-side, rgba(34,211,238,0.16), transparent);
+    animation: drift2 32s ease-in-out infinite alternate;
+  }
+  @keyframes drift1 { to { transform: translateX(-38%) translateY(70px) rotate(12deg); } }
+  @keyframes drift2 { to { transform: translateX(-46%) translateY(40px) rotate(-10deg); } }
+  .bg-grid {
+    background-image: radial-gradient(rgba(255,255,255,0.05) 1px, transparent 1px);
+    background-size: 26px 26px;
+    mask-image: linear-gradient(to bottom, rgba(0,0,0,0.7), transparent 560px);
+    -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,0.7), transparent 560px);
+  }
+
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  /* ── header ───────────────────────────────────────────── */
+  header {
+    position: sticky; top: 0; z-index: 50;
+    transition: background .3s, border-color .3s, backdrop-filter .3s;
+    border-bottom: 1px solid transparent;
+  }
+  header.scrolled {
+    background: rgba(7,9,14,0.72);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-bottom-color: var(--line);
+  }
+  .hbar {
+    max-width: 1120px; margin: 0 auto; padding: 14px 24px;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); }
+  .brand .mark {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: conic-gradient(from 210deg, var(--ix), var(--cy), var(--ix));
+    position: relative; flex-shrink: 0;
+  }
+  .brand .mark::after {
+    content: ""; position: absolute; inset: 6px; border-radius: 50%; background: var(--bg);
+  }
+  .brand b { font-size: 14px; letter-spacing: 0.14em; font-weight: 800; }
+  .brand span { font-size: 12.5px; color: var(--dim); }
+  @media (max-width: 640px) { .brand span { display: none; } }
+  .hspace { flex: 1; }
+
+  .mode-badge {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.09em;
+    padding: 6px 12px; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--panel);
+    color: var(--mut); font-family: inherit;
+    transition: border-color .25s, color .25s;
+  }
+  .mode-badge i {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--dim);
+  }
+  .mode-badge.demo { color: var(--am); border-color: rgba(251,191,36,0.35); }
+  .mode-badge.demo i { background: var(--am); }
+  .mode-badge.live { color: var(--gn); border-color: rgba(52,211,153,0.4); }
+  .mode-badge.live i {
+    background: var(--gn);
     animation: pulse 1.8s ease-in-out infinite;
   }
   @keyframes pulse {
     0%,100% { box-shadow: 0 0 0 0 rgba(52,211,153,0.45); }
-    50% { box-shadow: 0 0 0 7px rgba(52,211,153,0); }
+    50% { box-shadow: 0 0 0 6px rgba(52,211,153,0); }
   }
-  .brand b { font-size: 15px; letter-spacing: 0.16em; font-weight: 700; }
-  .brand span { font-size: 13px; color: var(--muted); }
-  .badges { display: flex; gap: 8px; flex-wrap: wrap; }
-  .badge {
-    font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
-    padding: 5px 11px; border-radius: 999px;
-    border: 1px solid var(--border); color: var(--muted);
-    background: var(--card);
+  .icon-btn {
+    width: 32px; height: 32px; border-radius: 9px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--panel);
+    color: var(--mut); display: inline-flex; align-items: center; justify-content: center;
+    transition: color .2s, border-color .2s;
   }
-  .badge.mock {
-    color: var(--amber); border-color: rgba(251,191,36,0.35);
-    background: rgba(251,191,36,0.08);
-  }
+  .icon-btn:hover { color: var(--text); border-color: var(--line-2); }
+  .icon-btn svg { width: 15px; height: 15px; }
 
-  /* ── hero / search ──────────────────────────────────── */
-  .hero { text-align: center; padding: 56px 0 8px; }
-  .hero h1 {
-    font-size: 42px; font-weight: 750; letter-spacing: -0.03em; line-height: 1.15;
+  /* ── settings popover ─────────────────────────────────── */
+  .settings {
+    position: fixed; top: 60px; right: max(24px, calc((100vw - 1120px) / 2 + 24px));
+    z-index: 60; width: 320px;
+    background: rgba(13,16,24,0.92); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+    border: 1px solid var(--line-2); border-radius: 16px; padding: 18px;
+    opacity: 0; transform: translateY(-8px) scale(0.98); pointer-events: none;
+    transition: opacity .22s, transform .22s;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.5);
   }
-  .hero h1 span {
-    background: linear-gradient(90deg, var(--accent1), var(--accent2));
+  .settings.open { opacity: 1; transform: none; pointer-events: auto; }
+  .settings h4 { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--mut); margin-bottom: 14px; }
+  .settings label { display: block; font-size: 11.5px; color: var(--dim); margin: 10px 0 5px; }
+  .settings input {
+    width: 100%; background: rgba(255,255,255,0.04); border: 1px solid var(--line);
+    border-radius: 9px; color: var(--text); font-size: 13px; padding: 8px 11px;
+    font-family: var(--mono); outline: none;
+  }
+  .settings input:focus { border-color: rgba(99,102,241,0.6); }
+  .settings .row { display: flex; gap: 8px; margin-top: 14px; }
+  .settings button {
+    flex: 1; border: none; border-radius: 9px; padding: 9px 0;
+    font-size: 12.5px; font-weight: 650; cursor: pointer; font-family: inherit;
+  }
+  .settings .save { background: linear-gradient(90deg, var(--ix), var(--cy)); color: #fff; }
+  .settings .save:hover { opacity: 0.9; }
+  .settings .probe-status { font-size: 11.5px; color: var(--dim); margin-top: 12px; font-family: var(--mono); min-height: 15px; }
+
+  /* ── hero ─────────────────────────────────────────────── */
+  .hero { text-align: center; padding: 84px 0 12px; }
+  .hero .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 11.5px; font-weight: 650; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--cy); padding: 6px 14px; border-radius: 999px;
+    border: 1px solid rgba(34,211,238,0.25); background: rgba(34,211,238,0.06);
+    margin-bottom: 26px;
+  }
+  .hero h1 {
+    font-size: clamp(34px, 5.4vw, 56px); font-weight: 800;
+    letter-spacing: -0.035em; line-height: 1.08;
+  }
+  .hero h1 .grad {
+    background: linear-gradient(92deg, var(--ix) 10%, var(--cy) 90%);
     -webkit-background-clip: text; background-clip: text; color: transparent;
   }
-  .hero p { color: var(--muted); margin-top: 12px; font-size: 15px; }
+  .hero p.sub {
+    color: var(--mut); margin: 18px auto 0; font-size: 16px; line-height: 1.65; max-width: 620px;
+  }
 
   .searchbox {
-    display: flex; gap: 10px; max-width: 720px; margin: 32px auto 0;
-    background: var(--card); border: 1px solid var(--border);
-    border-radius: 16px; padding: 8px;
+    display: flex; gap: 10px; max-width: 720px; margin: 38px auto 0;
+    background: rgba(13,16,24,0.7); border: 1px solid var(--line-2);
+    border-radius: 18px; padding: 9px;
     transition: border-color .25s, box-shadow .25s;
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
   }
   .searchbox:focus-within {
-    border-color: rgba(99,102,241,0.6);
-    box-shadow: 0 0 0 4px rgba(99,102,241,0.12);
+    border-color: rgba(99,102,241,0.65);
+    box-shadow: 0 0 0 4px rgba(99,102,241,0.13), 0 18px 50px rgba(0,0,0,0.35);
   }
   .searchbox input {
     flex: 1; background: none; border: none; outline: none;
-    color: var(--text); font-size: 16px; padding: 10px 14px;
-    font-family: inherit;
+    color: var(--text); font-size: 16px; padding: 11px 14px; font-family: inherit;
+    min-width: 0;
   }
-  .searchbox input::placeholder { color: #5b6275; }
+  .searchbox input::placeholder { color: #565d72; }
   .searchbox button {
-    background: linear-gradient(90deg, var(--accent1), var(--accent2));
-    border: none; border-radius: 11px; color: #fff;
-    font-size: 14px; font-weight: 650; padding: 0 22px;
+    background: linear-gradient(90deg, var(--ix), var(--cy));
+    border: none; border-radius: 12px; color: #fff;
+    font-size: 14px; font-weight: 700; padding: 0 24px;
     cursor: pointer; font-family: inherit;
     transition: opacity .2s, transform .1s;
+    min-width: 86px;
   }
   .searchbox button:hover { opacity: 0.9; }
   .searchbox button:active { transform: scale(0.97); }
-  .searchbox button:disabled { opacity: 0.45; cursor: default; }
-
-  .examples {
-    display: flex; gap: 8px; justify-content: center;
-    flex-wrap: wrap; margin-top: 18px;
+  .searchbox button.stop { background: rgba(248,113,113,0.16); color: var(--rd); border: 1px solid rgba(248,113,113,0.4); }
+  .kbd {
+    font-family: var(--mono); font-size: 10.5px; color: var(--dim);
+    border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px;
+    padding: 2px 6px; align-self: center; margin-right: 4px; white-space: nowrap;
   }
+  @media (max-width: 560px) { .kbd { display: none; } }
+
+  .examples { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 18px; }
   .chip {
-    font-size: 13px; color: var(--muted); cursor: pointer;
-    border: 1px solid var(--border); border-radius: 999px;
-    padding: 7px 14px; background: var(--card);
-    transition: color .2s, border-color .2s, background .2s;
+    font-size: 13px; color: var(--mut); cursor: pointer;
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: 8px 15px; background: var(--panel);
+    transition: color .2s, border-color .2s, background .2s, transform .15s;
     font-family: inherit;
   }
-  .chip:hover { color: var(--text); border-color: rgba(99,102,241,0.5); background: var(--card-hover); }
+  .chip:hover { color: var(--text); border-color: rgba(99,102,241,0.5); background: var(--panel-2); transform: translateY(-1px); }
   .chip .tag {
-    font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
-    margin-left: 7px; padding: 2px 6px; border-radius: 5px;
+    font-size: 9.5px; font-weight: 800; letter-spacing: 0.08em;
+    margin-left: 8px; padding: 2.5px 7px; border-radius: 5px; vertical-align: 1px;
   }
-  .tag.hop { color: var(--accent2); background: rgba(34,211,238,0.1); }
-  .tag.abstain { color: var(--amber); background: rgba(251,191,36,0.1); }
+  .tag.hop { color: var(--cy); background: rgba(34,211,238,0.1); }
+  .tag.abstain { color: var(--am); background: rgba(251,191,36,0.1); }
+  .cache-hint {
+    margin-top: 14px; font-size: 12.5px; color: var(--dim);
+    opacity: 0; transition: opacity .5s;
+  }
+  .cache-hint.show { opacity: 1; }
+  .cache-hint b { color: var(--cy); font-weight: 650; }
 
-  /* ── results layout ─────────────────────────────────── */
-  #results { display: none; margin-top: 48px; }
-  #results.show { display: block; animation: rise .45s ease; }
+  /* ── hero stats strip ─────────────────────────────────── */
+  .stats-strip {
+    display: flex; justify-content: center; flex-wrap: wrap;
+    gap: 0; margin: 58px auto 0; max-width: 980px;
+    border: 1px solid var(--line); border-radius: 18px;
+    background: var(--panel); overflow: hidden;
+  }
+  .stat {
+    flex: 1 1 150px; text-align: center; padding: 22px 10px;
+    border-right: 1px solid var(--line);
+  }
+  .stat:last-child { border-right: none; }
+  @media (max-width: 880px) { .stat { flex-basis: 33%; border-bottom: 1px solid var(--line); } }
+  .stat .v { font-family: var(--mono); font-size: 21px; font-weight: 700; letter-spacing: -0.02em; }
+  .stat .v em { font-style: normal; font-size: 13px; color: var(--mut); }
+  .stat .k { font-size: 11px; color: var(--dim); margin-top: 6px; letter-spacing: 0.07em; text-transform: uppercase; }
+
+  /* ── sections ─────────────────────────────────────────── */
+  section.block { padding: 96px 0 0; }
+  .sec-head { text-align: center; margin-bottom: 44px; }
+  .sec-head .kicker {
+    font-size: 11px; font-weight: 800; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--cy); margin-bottom: 12px;
+  }
+  .sec-head h2 { font-size: clamp(24px, 3.4vw, 34px); font-weight: 800; letter-spacing: -0.025em; }
+  .sec-head p { color: var(--mut); font-size: 14.5px; margin-top: 10px; }
+  .sec-head p code { font-family: var(--mono); font-size: 12.5px; color: var(--cy); }
+
+  /* reveal on scroll */
+  [data-rv] { opacity: 0; transform: translateY(18px); transition: opacity .6s ease, transform .6s ease; }
+  [data-rv].rv-in { opacity: 1; transform: none; }
+
+  /* ── console (results) ────────────────────────────────── */
+  #console { display: none; margin-top: 56px; }
+  #console.show { display: block; animation: rise .45s ease; }
   @keyframes rise { from { opacity: 0; transform: translateY(14px); } }
-
-  .cols { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; align-items: start; }
-  @media (max-width: 860px) { .cols { grid-template-columns: 1fr; } }
+  .cols { display: grid; grid-template-columns: 1.55fr 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
 
   .card {
-    background: var(--card); border: 1px solid var(--border);
-    border-radius: 16px; padding: 22px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 18px; padding: 22px;
   }
   .card + .card { margin-top: 16px; }
-  .card-head {
-    display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 16px;
-  }
+  .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; gap: 10px; }
   .card-head .label {
-    font-size: 11px; font-weight: 700; letter-spacing: 0.15em;
-    text-transform: uppercase; color: var(--muted);
+    font-size: 10.5px; font-weight: 800; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--dim);
   }
-  .pill {
-    font-size: 11px; font-weight: 650; padding: 4px 11px; border-radius: 999px;
-  }
-  .pill.grounded { color: var(--green); background: rgba(52,211,153,0.1); border: 1px solid rgba(52,211,153,0.3); }
-  .pill.abstained { color: var(--amber); background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.3); }
-  .pill.working { color: var(--accent2); background: rgba(34,211,238,0.08); border: 1px solid rgba(34,211,238,0.25); }
+  .pill { font-size: 11px; font-weight: 700; padding: 4px 12px; border-radius: 999px; white-space: nowrap; }
+  .pill.grounded { color: var(--gn); background: rgba(52,211,153,0.1); border: 1px solid rgba(52,211,153,0.3); }
+  .pill.abstained { color: var(--am); background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.3); }
+  .pill.working { color: var(--cy); background: rgba(34,211,238,0.08); border: 1px solid rgba(34,211,238,0.25); }
+  .pill.cached { color: var(--cy); background: rgba(34,211,238,0.1); border: 1px solid rgba(34,211,238,0.35); }
+  .pill.err { color: var(--rd); background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.3); }
 
-  /* ── answer ─────────────────────────────────────────── */
-  .answer { font-size: 15.5px; line-height: 1.75; min-height: 84px; }
+  /* answer */
+  .answer { font-size: 15.5px; line-height: 1.78; min-height: 84px; word-wrap: break-word; }
   .answer .cursor {
     display: inline-block; width: 8px; height: 17px; margin-left: 2px;
-    background: var(--accent2); vertical-align: text-bottom;
+    background: var(--cy); vertical-align: text-bottom;
     animation: blink 0.9s steps(1) infinite;
   }
   @keyframes blink { 50% { opacity: 0; } }
   .cite {
     display: inline-flex; align-items: center; justify-content: center;
     min-width: 19px; height: 19px; padding: 0 4px; margin: 0 2px;
-    border-radius: 6px; font-size: 11px; font-weight: 700;
-    color: var(--accent2); background: rgba(34,211,238,0.1);
+    border-radius: 6px; font-size: 11px; font-weight: 700; font-family: var(--mono);
+    color: var(--cy); background: rgba(34,211,238,0.1);
     border: 1px solid rgba(34,211,238,0.25);
     cursor: pointer; vertical-align: 2px;
     transition: background .2s, transform .15s;
   }
   .cite:hover { background: rgba(34,211,238,0.22); transform: translateY(-1px); }
-  .abstain-note {
-    border-left: 3px solid var(--amber); padding: 4px 0 4px 16px;
-    color: #d8c89a;
+  .abstain-note { border-left: 3px solid var(--am); padding: 4px 0 4px 16px; color: #d8c89a; }
+  .answer-meta {
+    display: none; align-items: center; gap: 14px; flex-wrap: wrap;
+    margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line);
+    font-family: var(--mono); font-size: 11px; color: var(--dim);
   }
+  .answer-meta.show { display: flex; }
+  .answer-meta .copy {
+    margin-left: auto; cursor: pointer; border: 1px solid var(--line); background: none;
+    color: var(--mut); border-radius: 7px; padding: 4px 10px; font-size: 11px; font-family: var(--mono);
+    transition: color .2s, border-color .2s;
+  }
+  .answer-meta .copy:hover { color: var(--text); border-color: var(--line-2); }
 
-  /* ── agent trace ────────────────────────────────────── */
+  /* trace */
   .trace { list-style: none; }
   .trace li {
-    display: flex; gap: 14px; padding: 9px 0;
-    font-size: 13.5px; opacity: 0; transform: translateY(6px);
+    display: flex; gap: 14px; padding: 9px 0; font-size: 13.5px;
+    opacity: 0; transform: translateY(6px);
     transition: opacity .35s, transform .35s;
   }
   .trace li.on { opacity: 1; transform: none; }
@@ -178,110 +337,268 @@
     width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
     font-size: 11px; margin-top: 1px;
-    border: 1px solid var(--border); background: var(--card);
+    border: 1px solid var(--line); background: var(--panel);
   }
-  .trace li.done .icon { color: var(--green); border-color: rgba(52,211,153,0.4); }
+  .trace li.done .icon { color: var(--gn); border-color: rgba(52,211,153,0.4); }
   .trace li.running .icon { border-color: rgba(34,211,238,0.5); }
   .trace li.running .icon::after {
     content: ""; width: 10px; height: 10px; border-radius: 50%;
-    border: 2px solid rgba(34,211,238,0.25); border-top-color: var(--accent2);
+    border: 2px solid rgba(34,211,238,0.25); border-top-color: var(--cy);
     animation: spin 0.8s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
-  .trace .step-label { flex: 1; color: var(--text); }
-  .trace .step-label small { display: block; color: var(--muted); margin-top: 2px; }
-  .trace .ms { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
-  .trace li.reflect .step-label { color: var(--accent2); }
+  .trace .step-label { flex: 1; color: var(--text); min-width: 0; }
+  .trace .step-label small { display: block; color: var(--mut); margin-top: 2px; line-height: 1.45; }
+  .trace .ms { color: var(--dim); font-size: 11.5px; font-family: var(--mono); white-space: nowrap; }
+  .trace li.reflect .step-label { color: var(--cy); }
 
-  /* ── passages ───────────────────────────────────────── */
+  /* passages */
   .passage {
-    border: 1px solid var(--border); border-radius: 12px;
+    border: 1px solid var(--line); border-radius: 13px;
     padding: 14px 16px; margin-bottom: 10px; background: rgba(255,255,255,0.015);
     opacity: 0; transform: translateY(8px);
     transition: opacity .4s, transform .4s, border-color .25s, box-shadow .25s;
   }
   .passage.on { opacity: 1; transform: none; }
-  .passage.glow {
-    border-color: rgba(34,211,238,0.55);
-    box-shadow: 0 0 0 3px rgba(34,211,238,0.1);
-  }
-  .passage .ptitle {
-    display: flex; align-items: center; gap: 8px;
-    font-size: 13.5px; font-weight: 650; margin-bottom: 6px;
-  }
+  .passage.glow { border-color: rgba(34,211,238,0.55); box-shadow: 0 0 0 3px rgba(34,211,238,0.1); }
+  .passage .ptitle { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 650; margin-bottom: 6px; flex-wrap: wrap; }
   .passage .pnum {
     min-width: 18px; height: 18px; border-radius: 5px;
     display: inline-flex; align-items: center; justify-content: center;
-    font-size: 10.5px; font-weight: 700;
-    color: var(--accent2); background: rgba(34,211,238,0.1);
+    font-size: 10.5px; font-weight: 700; font-family: var(--mono);
+    color: var(--cy); background: rgba(34,211,238,0.1);
     border: 1px solid rgba(34,211,238,0.25);
   }
+  .passage .hopbadge {
+    font-size: 9px; font-weight: 800; letter-spacing: 0.07em;
+    padding: 2px 6px; border-radius: 5px;
+    color: var(--cy); background: rgba(34,211,238,0.1);
+  }
   .passage .snippet {
-    font-size: 12.5px; color: var(--muted); line-height: 1.6;
+    font-size: 12.5px; color: var(--mut); line-height: 1.6;
     display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
   }
-  .passage .scores {
-    display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;
-    font-size: 10.5px; font-variant-numeric: tabular-nums;
+  .pscores { display: flex; gap: 14px; margin-top: 11px; }
+  .sc { flex: 1; min-width: 0; }
+  .sc i { display: block; font-style: normal; font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); margin-bottom: 4px; }
+  .sc em {
+    display: block; height: 3px; border-radius: 2px; background: rgba(255,255,255,0.07);
+    position: relative; overflow: hidden;
   }
-  .score { color: var(--muted); }
-  .score b { color: var(--text); font-weight: 650; margin-left: 4px; }
-  .score.low b { color: var(--red); }
+  .sc em::after {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: var(--w, 0%);
+    background: linear-gradient(90deg, var(--ix), var(--cy));
+    border-radius: 2px; transition: width .7s ease .15s;
+  }
+  .sc.low em::after { background: var(--rd); }
+  .sc b { display: block; font-family: var(--mono); font-size: 10.5px; font-weight: 600; color: var(--mut); margin-top: 4px; }
+  .sc.low b { color: var(--rd); }
   .skeleton {
-    border-radius: 12px; height: 92px; margin-bottom: 10px;
+    border-radius: 13px; height: 96px; margin-bottom: 10px;
     background: linear-gradient(100deg, rgba(255,255,255,0.03) 40%, rgba(255,255,255,0.07) 50%, rgba(255,255,255,0.03) 60%);
     background-size: 200% 100%;
     animation: sk 1.4s infinite;
   }
   @keyframes sk { to { background-position: -200% 0; } }
 
-  /* ── latency waterfall ──────────────────────────────── */
+  /* waterfall */
   .waterfall { display: flex; height: 30px; border-radius: 9px; overflow: hidden; background: rgba(255,255,255,0.04); }
   .seg {
     height: 100%; width: 0%; transition: width .7s ease;
     display: flex; align-items: center; justify-content: center;
-    font-size: 10.5px; font-weight: 650; color: rgba(255,255,255,0.92);
-    white-space: nowrap; overflow: hidden;
+    font-size: 10.5px; font-weight: 650; font-family: var(--mono);
+    color: rgba(255,255,255,0.92); white-space: nowrap; overflow: hidden;
   }
   .seg.embed    { background: #6366f1; }
   .seg.retrieve { background: #14b8a6; }
   .seg.rerank   { background: #0ea5e9; }
   .seg.generate { background: rgba(99,102,241,0.35); }
-  .wf-legend { display: flex; gap: 16px; margin-top: 12px; flex-wrap: wrap; font-size: 11.5px; color: var(--muted); }
-  .wf-legend i {
-    display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 6px;
-  }
-  .wf-total { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--text); font-weight: 650; }
+  .seg.cache    { background: linear-gradient(90deg, #0e7490, #22d3ee); }
+  .wf-legend { display: flex; gap: 16px; margin-top: 12px; flex-wrap: wrap; font-size: 11.5px; color: var(--mut); }
+  .wf-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 6px; }
+  .wf-total { margin-left: auto; font-family: var(--mono); font-size: 11.5px; color: var(--text); font-weight: 600; }
 
-  footer {
-    margin-top: 56px; text-align: center; font-size: 12px; color: #5b6275; line-height: 1.8;
+  /* wire log */
+  .wirelog {
+    font-family: var(--mono); font-size: 10.5px; line-height: 1.75;
+    max-height: 280px; overflow-y: auto; color: var(--dim);
+    scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.15) transparent;
   }
-  footer code { color: var(--muted); }
+  .wirelog .wl { display: flex; gap: 8px; white-space: nowrap; }
+  .wirelog .wl b { font-weight: 600; flex-shrink: 0; }
+  .wirelog .wl span { overflow: hidden; text-overflow: ellipsis; opacity: 0.75; }
+  .e-query_id b { color: var(--ix); }
+  .e-cache_hit b { color: var(--cy); }
+  .e-trace_step b { color: var(--gn); }
+  .e-passage b { color: #0ea5e9; }
+  .e-generation_start b, .e-token b { color: var(--mut); }
+  .e-done b { color: var(--gn); }
+  .e-error b { color: var(--rd); }
+  .wirelog-empty { color: var(--dim); font-size: 11px; padding: 6px 0; }
+
+  /* ── pipeline diagram ─────────────────────────────────── */
+  .pipe-card {
+    border: 1px solid var(--line); border-radius: 20px; background: var(--panel);
+    padding: 28px 20px 20px; overflow-x: auto;
+  }
+  .pipe-svg { width: 100%; min-width: 760px; height: auto; display: block; }
+  .pnode rect {
+    fill: rgba(255,255,255,0.035); stroke: rgba(255,255,255,0.14); stroke-width: 1; rx: 11;
+  }
+  .pnode.hot rect { stroke: rgba(99,102,241,0.55); fill: rgba(99,102,241,0.08); }
+  .pnode text { fill: var(--text); font-size: 12.5px; font-weight: 650; font-family: "Inter", sans-serif; }
+  .pnode .psub { fill: var(--dim); font-size: 9px; font-weight: 400; font-family: var(--mono); }
+  .pedge { stroke: rgba(255,255,255,0.16); stroke-width: 1.5; fill: none; }
+  .pedge.cachearc { stroke: rgba(34,211,238,0.35); stroke-dasharray: 5 5; }
+  .pedge.looparc { stroke: rgba(99,102,241,0.5); stroke-dasharray: 4 4; }
+  .plabel { fill: var(--dim); font-size: 9.5px; font-family: var(--mono); }
+  .plabel.cachelabel { fill: rgba(34,211,238,0.8); }
+  .plabel.looplabel { fill: rgba(129,140,248,0.9); }
+  .pdot { fill: var(--cy); }
+  .pdot.ixdot { fill: var(--ix); }
+  .stack-chips { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 22px; }
+  .stack-chips span {
+    font-family: var(--mono); font-size: 11px; color: var(--mut);
+    border: 1px solid var(--line); border-radius: 999px; padding: 6px 13px; background: var(--panel);
+  }
+
+  /* ── benchmarks ───────────────────────────────────────── */
+  .bench-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  @media (max-width: 980px) { .bench-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 560px) { .bench-grid { grid-template-columns: 1fr; } }
+  .bcard {
+    border: 1px solid var(--line); border-radius: 18px; background: var(--panel);
+    padding: 22px; position: relative; overflow: hidden;
+  }
+  .bcard::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, var(--ix), var(--cy)); opacity: 0.7;
+  }
+  .bcard .bk { font-size: 10.5px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); }
+  .bcard .bv { font-family: var(--mono); font-size: 31px; font-weight: 700; letter-spacing: -0.03em; margin-top: 12px; }
+  .bcard .bv em { font-style: normal; font-size: 15px; color: var(--mut); }
+  .bcard .bd {
+    display: inline-block; font-size: 10.5px; font-weight: 700; margin-top: 10px;
+    color: var(--gn); background: rgba(52,211,153,0.1); border: 1px solid rgba(52,211,153,0.25);
+    padding: 3px 9px; border-radius: 999px;
+  }
+  .bcard .bs { font-size: 11.5px; color: var(--dim); margin-top: 12px; line-height: 1.6; font-family: var(--mono); }
+  .empair { display: flex; gap: 7px; align-items: flex-end; height: 56px; margin-top: 14px; }
+  .empair .bar { flex: 1; border-radius: 6px 6px 2px 2px; position: relative; min-height: 4px; transition: height 1s cubic-bezier(.2,.7,.2,1); }
+  .empair .bar.ss { background: rgba(255,255,255,0.12); height: 4px; }
+  .empair .bar.mh { background: linear-gradient(180deg, var(--cy), var(--ix)); height: 4px; }
+  .empair .bar i {
+    position: absolute; top: -17px; left: 50%; transform: translateX(-50%);
+    font-style: normal; font-family: var(--mono); font-size: 10px; color: var(--mut); white-space: nowrap;
+  }
+  .empair-labels { display: flex; gap: 7px; margin-top: 6px; }
+  .empair-labels span { flex: 1; text-align: center; font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--dim); }
+
+  .beir-card { margin-top: 14px; border: 1px solid var(--line); border-radius: 18px; background: var(--panel); padding: 24px; overflow-x: auto; }
+  table.beir { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 560px; }
+  table.beir th {
+    text-align: left; font-size: 10px; font-weight: 800; letter-spacing: 0.13em; text-transform: uppercase;
+    color: var(--dim); padding: 0 12px 12px 0; border-bottom: 1px solid var(--line);
+  }
+  table.beir th.r, table.beir td.r { text-align: right; }
+  table.beir td { padding: 13px 12px 13px 0; border-bottom: 1px solid var(--line); color: var(--mut); }
+  table.beir tr:last-child td { border-bottom: none; }
+  table.beir td.name { color: var(--text); font-weight: 650; }
+  table.beir td.r { font-family: var(--mono); }
+  table.beir td.hl { color: var(--text); font-weight: 700; }
+  .beir-foot { margin-top: 14px; font-size: 11.5px; color: var(--dim); font-family: var(--mono); line-height: 1.7; }
+  .beir-foot b { color: var(--mut); font-weight: 600; }
+
+  .safety-strip {
+    display: flex; gap: 14px; margin-top: 14px; flex-wrap: wrap;
+  }
+  .safety-strip .s {
+    flex: 1 1 200px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel);
+    padding: 18px 20px; display: flex; align-items: center; gap: 14px;
+  }
+  .safety-strip .s .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--gn); flex-shrink: 0; }
+  .safety-strip .s .dot.amber { background: var(--am); }
+  .safety-strip .s .dot.cyan { background: var(--cy); }
+  .safety-strip .s b { font-family: var(--mono); font-size: 16px; font-weight: 700; }
+  .safety-strip .s span { font-size: 11.5px; color: var(--dim); display: block; margin-top: 2px; }
+  .repro {
+    margin-top: 14px; border: 1px solid var(--line); border-radius: 14px;
+    background: rgba(0,0,0,0.3); padding: 14px 18px;
+    font-family: var(--mono); font-size: 12px; color: var(--mut);
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  .repro .ps1 { color: var(--cy); }
+  .repro .cm { color: var(--dim); }
+
+  /* ── footer ───────────────────────────────────────────── */
+  footer {
+    margin-top: 110px; border-top: 1px solid var(--line);
+    padding: 36px 24px 48px; text-align: center;
+    font-size: 12.5px; color: var(--dim); line-height: 2; position: relative; z-index: 1;
+  }
+  footer a { color: var(--mut); text-decoration: none; border-bottom: 1px solid var(--line-2); transition: color .2s; }
+  footer a:hover { color: var(--text); }
+  footer .phases { font-family: var(--mono); font-size: 11px; margin-top: 6px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .bg-aurora::before, .bg-aurora::after, .pdot, .brand .mark { animation: none !important; }
+    [data-rv] { opacity: 1; transform: none; transition: none; }
+    html { scroll-behavior: auto; }
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
 
-  <header>
-    <div class="brand">
-      <span class="dot"></span>
+<div class="bg-aurora"></div>
+<div class="bg-grid"></div>
+
+<header id="hdr">
+  <div class="hbar">
+    <a class="brand" href="#">
+      <span class="mark"></span>
       <b>RAG&nbsp;ENGINE</b>
       <span>Wikipedia · agentic retrieval</span>
-    </div>
-    <div class="badges">
-      <span class="badge">1M articles</span>
-      <span class="badge">bge-small · 384d</span>
-      <span class="badge">FAISS HNSW</span>
-      <span class="badge mock">MOCK MODE — no backend</span>
-    </div>
-  </header>
+    </a>
+    <div class="hspace"></div>
+    <button class="mode-badge" id="mode-badge" title="Connection mode — click to configure">
+      <i></i><span id="mode-text">CHECKING…</span>
+    </button>
+    <button class="icon-btn" id="settings-btn" title="API settings" aria-label="API settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+    <a class="icon-btn" href="https://github.com/Sanjit-Jeevanand/rag-engine" target="_blank" rel="noopener" title="GitHub" aria-label="GitHub repository">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.55 0-.27-.01-1.17-.02-2.12-3.2.7-3.88-1.36-3.88-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.03 1.76 2.69 1.25 3.34.96.1-.74.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.28 1.18-3.09-.12-.29-.51-1.46.11-3.05 0 0 .96-.31 3.15 1.18a10.9 10.9 0 0 1 2.87-.39c.97 0 1.95.13 2.87.39 2.19-1.49 3.15-1.18 3.15-1.18.62 1.59.23 2.76.11 3.05.73.81 1.18 1.83 1.18 3.09 0 4.41-2.69 5.39-5.25 5.67.41.36.78 1.06.78 2.14 0 1.55-.01 2.79-.01 3.17 0 .31.21.67.8.55A10.51 10.51 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5z"/></svg>
+    </a>
+  </div>
+</header>
 
+<div class="settings" id="settings">
+  <h4>Backend connection</h4>
+  <label for="cfg-url">API base URL</label>
+  <input id="cfg-url" type="text" placeholder="http://localhost:8000" spellcheck="false">
+  <label for="cfg-token">Bearer token</label>
+  <input id="cfg-token" type="password" placeholder="API_TOKEN" spellcheck="false">
+  <div class="row">
+    <button class="save" id="cfg-save">Save &amp; reconnect</button>
+  </div>
+  <div class="probe-status" id="probe-status"></div>
+</div>
+
+<main class="wrap">
+
+  <!-- ── hero ─────────────────────────────────────────── -->
   <section class="hero">
-    <h1>Ask Wikipedia <span>anything</span>.</h1>
-    <p>Hybrid retrieval · cross-encoder reranking · multi-hop reasoning · grounded citations</p>
+    <div class="eyebrow">1M articles · 8.8M chunks · built from scratch, no LangChain</div>
+    <h1>Ask a million Wikipedia articles.<br>Get a <span class="grad">cited</span> answer.</h1>
+    <p class="sub">
+      Hybrid HNSW + BM25 retrieval, cross-encoder reranking, and a hand-rolled multi-hop
+      agent that extracts bridge entities, checks its own work — and refuses to answer
+      when the evidence isn't there.
+    </p>
 
     <div class="searchbox">
-      <input id="q" type="text" placeholder="Ask anything about the world…  (⌘K)" autocomplete="off">
+      <input id="q" type="text" placeholder="Why is the sky blue?" autocomplete="off" aria-label="Ask a question">
+      <span class="kbd">⌘K</span>
       <button id="ask">Ask</button>
     </div>
 
@@ -294,9 +611,22 @@
         Who won the 2031 World Cup?<span class="tag abstain">ABSTAINS</span>
       </button>
     </div>
+    <div class="cache-hint" id="cache-hint">
+      Tip: ask the <b>same question again</b> — the semantic cache answers in ~1 ms without touching the pipeline.
+    </div>
+
+    <div class="stats-strip" data-rv>
+      <div class="stat"><div class="v num" data-cu="1000000" data-fmt="compact">0</div><div class="k">articles</div></div>
+      <div class="stat"><div class="v num" data-cu="8797519" data-fmt="compact">0</div><div class="k">chunks indexed</div></div>
+      <div class="stat"><div class="v num" data-cu="0.387" data-dec="3" data-suf=" ms">0</div><div class="k">retrieval p50</div></div>
+      <div class="stat"><div class="v num" data-cu="18471" data-fmt="comma">0</div><div class="k">search QPS</div></div>
+      <div class="stat"><div class="v num" data-pre="+" data-cu="20" data-suf=" EM">0</div><div class="k">multi-hop gain</div></div>
+      <div class="stat"><div class="v num" data-pre="$" data-cu="0.0006" data-dec="4">0</div><div class="k">cost / query</div></div>
+    </div>
   </section>
 
-  <section id="results">
+  <!-- ── console ──────────────────────────────────────── -->
+  <section id="console">
     <div class="cols">
       <div>
         <div class="card">
@@ -305,6 +635,7 @@
             <span class="pill working" id="answer-pill">retrieving…</span>
           </div>
           <div class="answer" id="answer"><span class="cursor"></span></div>
+          <div class="answer-meta" id="answer-meta"></div>
         </div>
 
         <div class="card">
@@ -313,10 +644,8 @@
         </div>
 
         <div class="card">
-          <div class="card-head">
-            <span class="label">Latency budget</span>
-          </div>
-          <div class="waterfall">
+          <div class="card-head"><span class="label">Latency budget</span></div>
+          <div class="waterfall" id="waterfall">
             <div class="seg embed" id="seg-embed"></div>
             <div class="seg retrieve" id="seg-retrieve"></div>
             <div class="seg rerank" id="seg-rerank"></div>
@@ -340,158 +669,498 @@
           </div>
           <div id="passages"></div>
         </div>
+
+        <div class="card">
+          <div class="card-head">
+            <span class="label">Wire protocol — SSE</span>
+            <span class="pill working" id="wire-mode">demo</span>
+          </div>
+          <div class="wirelog" id="wirelog">
+            <div class="wirelog-empty">Server-sent events appear here as they stream.</div>
+          </div>
+        </div>
       </div>
     </div>
   </section>
 
-  <footer>
-    Every number, passage and answer on this page is a <b>placeholder</b>.<br>
-    Retrieval lands in Phase&nbsp;3 · reranking in Phase&nbsp;6 · the agentic loop in Phase&nbsp;7 ·
-    this UI gets wired to <code>FastAPI /query</code> in Phase&nbsp;9.
-  </footer>
-</div>
+  <!-- ── pipeline ─────────────────────────────────────── -->
+  <section class="block" id="how">
+    <div class="sec-head" data-rv>
+      <div class="kicker">Under the hood</div>
+      <h2>One query, seven stages, no black boxes</h2>
+      <p>No frameworks in the hot path — the loop, the fusion, the abstention logic are all explicit code.</p>
+    </div>
+
+    <div class="pipe-card" data-rv>
+      <svg class="pipe-svg" viewBox="0 0 1040 322" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Pipeline diagram: query is embedded, retrieved via HNSW and BM25 in parallel, fused with RRF, reranked by a cross-encoder, passed through the multi-hop agent, and answered with citations. A semantic cache can skip the whole pipeline.">
+
+        <!-- cache shortcut arc -->
+        <path class="pedge cachearc" d="M 54 132 C 54 26, 968 26, 968 132"/>
+        <text class="plabel cachelabel" x="520" y="20" text-anchor="middle">semantic cache · cosine ≥ 0.97 → skip the entire pipeline (~1 ms)</text>
+
+        <!-- edges -->
+        <path class="pedge" id="e1" d="M 100 160 L 132 160"/>
+        <path class="pedge" id="e2" d="M 244 160 C 266 160, 254 84, 276 84"/>
+        <path class="pedge" id="e3" d="M 244 160 C 266 160, 254 242, 276 242"/>
+        <path class="pedge" id="e4" d="M 412 84 C 434 84, 422 160, 444 160"/>
+        <path class="pedge" id="e5" d="M 412 242 C 434 242, 422 160, 444 160"/>
+        <path class="pedge" id="e6" d="M 540 160 L 572 160"/>
+        <path class="pedge" id="e7" d="M 708 160 L 740 160"/>
+        <path class="pedge" id="e8" d="M 876 160 L 908 160"/>
+
+        <!-- agent reflection loop -->
+        <path class="pedge looparc" d="M 850 134 C 866 104, 750 104, 766 134"/>
+        <text class="plabel looplabel" x="808" y="98" text-anchor="middle">reflect · ≤3 hops</text>
+
+        <!-- nodes -->
+        <g class="pnode">
+          <rect x="8" y="134" width="92" height="52" rx="11"/>
+          <text x="54" y="157" text-anchor="middle">Query</text>
+          <text class="psub" x="54" y="174" text-anchor="middle">POST /query</text>
+        </g>
+        <g class="pnode">
+          <rect x="132" y="134" width="112" height="52" rx="11"/>
+          <text x="188" y="157" text-anchor="middle">Embed</text>
+          <text class="psub" x="188" y="174" text-anchor="middle">bge-small · 384d</text>
+        </g>
+        <g class="pnode hot">
+          <rect x="276" y="58" width="136" height="52" rx="11"/>
+          <text x="344" y="81" text-anchor="middle">Dense — HNSW</text>
+          <text class="psub" x="344" y="98" text-anchor="middle">faiss · ef=64 · 0.39ms</text>
+        </g>
+        <g class="pnode hot">
+          <rect x="276" y="216" width="136" height="52" rx="11"/>
+          <text x="344" y="239" text-anchor="middle">Sparse — BM25</text>
+          <text class="psub" x="344" y="256" text-anchor="middle">bm25s · lexical match</text>
+        </g>
+        <g class="pnode">
+          <rect x="444" y="134" width="96" height="52" rx="11"/>
+          <text x="492" y="157" text-anchor="middle">RRF</text>
+          <text class="psub" x="492" y="174" text-anchor="middle">rank fusion</text>
+        </g>
+        <g class="pnode">
+          <rect x="572" y="134" width="136" height="52" rx="11"/>
+          <text x="640" y="157" text-anchor="middle">Rerank</text>
+          <text class="psub" x="640" y="174" text-anchor="middle">bge-reranker-base</text>
+        </g>
+        <g class="pnode hot">
+          <rect x="740" y="134" width="136" height="52" rx="11"/>
+          <text x="808" y="157" text-anchor="middle">Agent loop</text>
+          <text class="psub" x="808" y="174" text-anchor="middle">bridge · cite · abstain</text>
+        </g>
+        <g class="pnode">
+          <rect x="908" y="134" width="124" height="52" rx="11"/>
+          <text x="970" y="157" text-anchor="middle">Answer</text>
+          <text class="psub" x="970" y="174" text-anchor="middle">SSE + citations</text>
+        </g>
+
+        <!-- animated dots -->
+        <circle class="pdot" r="3" style="offset-path: path('M 100 160 L 132 160'); animation: pflow 1.2s linear infinite;"/>
+        <circle class="pdot ixdot" r="3" style="offset-path: path('M 244 160 C 266 160, 254 84, 276 84'); animation: pflow 1.4s linear infinite 0.2s;"/>
+        <circle class="pdot ixdot" r="3" style="offset-path: path('M 244 160 C 266 160, 254 242, 276 242'); animation: pflow 1.4s linear infinite 0.5s;"/>
+        <circle class="pdot" r="3" style="offset-path: path('M 412 84 C 434 84, 422 160, 444 160'); animation: pflow 1.4s linear infinite 0.8s;"/>
+        <circle class="pdot" r="3" style="offset-path: path('M 412 242 C 434 242, 422 160, 444 160'); animation: pflow 1.4s linear infinite 1.1s;"/>
+        <circle class="pdot ixdot" r="3" style="offset-path: path('M 540 160 L 572 160'); animation: pflow 1.2s linear infinite 0.3s;"/>
+        <circle class="pdot" r="3" style="offset-path: path('M 708 160 L 740 160'); animation: pflow 1.2s linear infinite 0.6s;"/>
+        <circle class="pdot ixdot" r="3" style="offset-path: path('M 876 160 L 908 160'); animation: pflow 1.2s linear infinite 0.9s;"/>
+        <circle class="pdot" r="2.5" style="offset-path: path('M 54 132 C 54 26, 968 26, 968 132'); animation: pflow 3.2s linear infinite;"/>
+      </svg>
+
+      <div class="stack-chips">
+        <span>bge-small-en-v1.5 · 384d</span>
+        <span>FAISS HNSW M=32 ef=64</span>
+        <span>bm25s</span>
+        <span>reciprocal rank fusion</span>
+        <span>bge-reranker-base</span>
+        <span>gpt-4o-mini</span>
+        <span>FastAPI · SSE</span>
+        <span>Redis semantic cache</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── benchmarks ───────────────────────────────────── -->
+  <section class="block" id="benchmarks">
+    <div class="sec-head" data-rv>
+      <div class="kicker">Receipts</div>
+      <h2>Real numbers, reproducible runs</h2>
+      <p>Seed 42 · official <code>pytrec_eval</code> scoring · every figure below is a measured result, not a target.</p>
+    </div>
+
+    <div class="bench-grid">
+      <div class="bcard" data-rv>
+        <div class="bk">HotpotQA · exact match</div>
+        <div class="bv num" data-cu="0.49" data-dec="2">0</div>
+        <div class="empair">
+          <div class="bar ss" data-h="59%"><i>0.29</i></div>
+          <div class="bar mh" data-h="100%"><i>0.49</i></div>
+        </div>
+        <div class="empair-labels"><span>single-shot</span><span>multi-hop</span></div>
+        <div class="bd">+20 EM points</div>
+        <div class="bs">n=100 · gpt-4o-mini · F1 0.45 → 0.60</div>
+      </div>
+
+      <div class="bcard" data-rv>
+        <div class="bk">Cost per query</div>
+        <div class="bv num"><span data-cu="0.0006" data-dec="4" data-pre="$">0</span></div>
+        <div class="bd">8× under the $0.005 target</div>
+        <div class="bs">4,160 tokens in · 41 out<br>tracked per request, thread-local</div>
+      </div>
+
+      <div class="bcard" data-rv>
+        <div class="bk">Retrieval latency</div>
+        <div class="bv num"><span data-cu="0.387" data-dec="3">0</span><em> ms p50</em></div>
+        <div class="bd">98.6% recall@10</div>
+        <div class="bs">HNSW ef=64 · 8.8M vectors<br>300× faster than exact search</div>
+      </div>
+
+      <div class="bcard" data-rv>
+        <div class="bk">Search throughput</div>
+        <div class="bv num"><span data-cu="18471" data-fmt="comma">0</span></div>
+        <div class="bd">QPS at p99 0.74 ms</div>
+        <div class="bs">8 threads · M4 Pro<br>FAISS releases the GIL</div>
+      </div>
+    </div>
+
+    <div class="beir-card" data-rv>
+      <table class="beir">
+        <thead>
+          <tr>
+            <th>BEIR dataset</th><th>Corpus</th><th>Queries</th>
+            <th class="r">nDCG@10</th><th class="r">Recall@10</th><th class="r">MRR</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="name">SciFact</td><td>5,183 docs</td><td>300</td>
+            <td class="r hl">0.7253</td><td class="r">0.8529</td><td class="r">0.6917</td>
+          </tr>
+          <tr>
+            <td class="name">NFCorpus</td><td>3,633 docs</td><td>323</td>
+            <td class="r hl">0.3311</td><td class="r">0.1609</td><td class="r">0.5383</td>
+          </tr>
+          <tr>
+            <td class="name">ArguAna</td><td>8,674 docs</td><td>1,406</td>
+            <td class="r hl">0.2826</td><td class="r">0.6166</td><td class="r">0.1793</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="beir-foot">
+        <b>pipeline:</b> bge-small-en-v1.5 dense + bm25s → reciprocal rank fusion → bge-reranker-base cross-encoder · scored with pytrec_eval ·
+        SciFact beats the BM25 baseline (0.665); ArguAna's counter-argument structure is a known dense-retrieval failure mode — reported, not hidden.
+      </div>
+    </div>
+
+    <div class="safety-strip">
+      <div class="s" data-rv><span class="dot"></span><div><b class="num">0 / 100</b><span>fabricated citations — every cited ID verified against the retrieved set</span></div></div>
+      <div class="s" data-rv><span class="dot amber"></span><div><b class="num">4 / 5</b><span>out-of-corpus questions correctly refused instead of guessed</span></div></div>
+      <div class="s" data-rv><span class="dot cyan"></span><div><b class="num">12 / 100</b><span>answers self-corrected by the reflection pass before being returned</span></div></div>
+    </div>
+
+    <div class="repro" data-rv>
+      <span class="ps1">$</span>
+      <span>bash scripts/reproduce_eval.sh</span>
+      <span class="cm"># seed 42 · BEIR + HotpotQA + cost, end to end</span>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div>
+    <b style="color:var(--mut)">Demo mode</b> replays recorded pipeline runs entirely in the browser — no backend required.
+    <b style="color:var(--mut)">Live mode</b> streams real server-sent events from the FastAPI backend.
+  </div>
+  <div class="phases">ingest → eval harness → HNSW → throughput → hybrid → agent → benchmarks → serving</div>
+  <div style="margin-top:10px">
+    <a href="https://github.com/Sanjit-Jeevanand/rag-engine" target="_blank" rel="noopener">github.com/Sanjit-Jeevanand/rag-engine</a>
+  </div>
+</footer>
 
 <script>
-/* ───────────────────────── mock data ───────────────────────── */
+/* ════════════════════════════════════════════════════════════════════
+   RAG Engine front-end.
 
-const DEMOS = {
-  "why is the sky blue?": {
-    mode: "grounded",
-    faith: 96,
-    passages: [
-      { t: "Rayleigh scattering", s: "Rayleigh scattering is the scattering of light by particles much smaller than the wavelength of the radiation. The intensity of scattered light varies inversely with the fourth power of the wavelength, so shorter (blue) wavelengths are scattered much more strongly than longer (red) ones…", d: 0.87, b: 14.2, r: 0.97 },
-      { t: "Diffuse sky radiation", s: "Diffuse sky radiation is solar radiation reaching the Earth's surface after having been scattered by molecules in the atmosphere. Of the visible wavelengths, blue light is scattered most efficiently, which is why the clear daytime sky appears blue when viewed away from the sun…", d: 0.84, b: 11.8, r: 0.94 },
-      { t: "Sunset", s: "During sunset, sunlight traverses a much longer path through the atmosphere. Most short-wavelength blue light is scattered out of the line of sight before reaching the observer, leaving the longer red and orange wavelengths to dominate the sky's appearance…", d: 0.79, b: 9.1, r: 0.88 },
-      { t: "Atmosphere of Earth", s: "The atmosphere of Earth is composed primarily of nitrogen (78%) and oxygen (21%). These molecules are far smaller than the wavelength of visible light, placing atmospheric scattering firmly in the Rayleigh regime…", d: 0.76, b: 8.7, r: 0.71 },
-    ],
-    answer: "The sky appears blue because of **Rayleigh scattering** — the scattering of sunlight by gas molecules in Earth's atmosphere [1]. The intensity of this scattering is proportional to 1/λ⁴, so shorter blue wavelengths (~450 nm) scatter far more strongly than longer red ones [1]. When you look at the daytime sky away from the sun, you are seeing this scattered blue light arriving from every direction [2]. At sunset the light's path through the atmosphere is much longer, so most of the blue has already been scattered away — which is why the horizon turns red and orange instead [3].",
-    trace: [
-      { l: "Embed query", sub: "bge-small-en-v1.5 · 384d", ms: 8 },
-      { l: "Retrieve top-20", sub: "hybrid: FAISS HNSW + BM25, RRF fusion", ms: 4 },
-      { l: "Rerank 20 → 4", sub: "cross-encoder bge-reranker", ms: 23 },
-      { l: "Verify evidence", sub: "max rerank score 0.97 ≥ threshold 0.55 ✓", ms: 1, reflect: true },
-      { l: "Generate answer", sub: "claude-sonnet · streaming, citations enforced", ms: 580 },
-    ],
-    lat: { embed: 8, retrieve: 4, rerank: 23, generate: 580 },
-  },
+   Two modes, one renderer:
+     · live — POST {apiBase}/query with a bearer token, parse the SSE
+       stream, dispatch each event to the renderer.
+     · demo — replay recorded pipeline runs through the *same* event
+       dispatch, so the page exercises the exact wire protocol the
+       FastAPI backend (Phase 8) must implement.
 
-  "what is the capital of the country where the eiffel tower is located?": {
-    mode: "grounded",
-    faith: 94,
-    passages: [
-      { t: "Eiffel Tower", s: "The Eiffel Tower is a wrought-iron lattice tower on the Champ de Mars in Paris, France. It is named after the engineer Gustave Eiffel, whose company designed and built the tower for the 1889 World's Fair…", d: 0.91, b: 16.8, r: 0.98, hop: 1 },
-      { t: "France", s: "France, officially the French Republic, is a country located primarily in Western Europe. Its capital and largest city is Paris, which is also the country's principal cultural and commercial centre…", d: 0.83, b: 12.4, r: 0.95, hop: 2 },
-      { t: "Paris", s: "Paris is the capital and largest city of France. With an official population of over two million residents, it has been one of Europe's major centres of finance, diplomacy, commerce, culture and science since the 17th century…", d: 0.81, b: 11.6, r: 0.93, hop: 2 },
-    ],
-    answer: "The Eiffel Tower stands on the Champ de Mars in **Paris, France** [1]. The capital of France is **Paris** [2][3] — so the capital of the country where the Eiffel Tower is located is **Paris**.",
-    trace: [
-      { l: "Embed query", sub: "bge-small-en-v1.5 · 384d", ms: 8 },
-      { l: "Hop 1 — retrieve top-20", sub: "best evidence: “Eiffel Tower” (rerank 0.98)", ms: 5 },
-      { l: "Reflect", sub: "tower is in France — but capital not yet evidenced → second hop", ms: 410, reflect: true },
-      { l: "Hop 2 — retrieve “capital of France”", sub: "rewritten sub-query · hybrid retrieval", ms: 5 },
-      { l: "Rerank 40 → 3", sub: "cross-encoder over both hops", ms: 31 },
-      { l: "Generate answer", sub: "claude-sonnet · citations from both hops", ms: 520 },
-    ],
-    lat: { embed: 8, retrieve: 10, rerank: 31, generate: 930 },
-  },
+   SSE contract (events, in order):
+     query_id         {id}
+     cache_hit        {hit, sim?}
+     trace_step       {step, label, sub, ms, reflect?, skipped?}
+     passage          {num, title, snippet, dense, bm25, rerank, hop?, low?}
+     generation_start {}
+     token            {text}
+     done             {mode, faith?, abstained, lat:{embed,retrieve,rerank,generate},
+                       total_ms, cached?, cost?:{usd,in,out}, generation_unavailable?}
+   ════════════════════════════════════════════════════════════════════ */
 
-  "who won the 2031 fifa world cup?": {
-    mode: "abstain",
-    passages: [
-      { t: "FIFA World Cup", s: "The FIFA World Cup is an international association football competition between the senior men's national teams of the members of FIFA. The tournament has been held every four years since the inaugural event in 1930…", d: 0.62, b: 10.3, r: 0.31, low: true },
-      { t: "2026 FIFA World Cup", s: "The 2026 FIFA World Cup will be jointly hosted by 16 cities in three North American countries: Canada, Mexico, and the United States. It will be the first World Cup to feature 48 teams…", d: 0.58, b: 9.7, r: 0.27, low: true },
-      { t: "List of FIFA World Cup finals", s: "The FIFA World Cup final is the last match of the competition. The most recent final listed in this corpus snapshot took place prior to the December 2025 dump date…", d: 0.55, b: 8.2, r: 0.22, low: true },
-    ],
-    answer: "ABSTAIN::I can't answer this from the corpus. The 2031 FIFA World Cup post-dates this Wikipedia snapshot (December 2025), and the best retrieved evidence scored **0.31** — below the abstention threshold of **0.55**. Rather than guess, the system declines to answer.",
-    trace: [
-      { l: "Embed query", sub: "bge-small-en-v1.5 · 384d", ms: 8 },
-      { l: "Retrieve top-20", sub: "hybrid: FAISS HNSW + BM25, RRF fusion", ms: 4 },
-      { l: "Rerank 20 → 3", sub: "cross-encoder bge-reranker", ms: 24 },
-      { l: "Verify evidence", sub: "max rerank score 0.31 < threshold 0.55 ✗ — abstaining", ms: 1, reflect: true },
-      { l: "Generate answer", sub: "skipped — abstention saves the LLM call entirely", ms: 0, skipped: true },
-    ],
-    lat: { embed: 8, retrieve: 4, rerank: 24, generate: 0 },
-  },
+"use strict";
+
+/* ── config ─────────────────────────────────────────────────────────── */
+
+const CFG = {
+  get apiBase() { return localStorage.getItem("rag.apiBase") || "http://localhost:8000"; },
+  set apiBase(v) { localStorage.setItem("rag.apiBase", v); },
+  get token() { return localStorage.getItem("rag.token") || ""; },
+  set token(v) { localStorage.setItem("rag.token", v); },
 };
 
-const GENERIC = {
-  mode: "placeholder",
-  passages: null, // skeletons
-  answer: "PLACEHOLDER::This is a **mock response** — there's no backend behind this page yet. Retrieval lands in Phase 3, reranking in Phase 6, and the agentic loop in Phase 7. Try one of the three example queries below the search bar to see the full simulated experience: grounded citations, multi-hop reasoning, and abstention.",
-  trace: [
-    { l: "Embed query", sub: "bge-small-en-v1.5 · 384d", ms: 8 },
-    { l: "Retrieve top-20", sub: "⚠ placeholder — FAISS index not built yet", ms: 4 },
-    { l: "Rerank 20 → 5", sub: "⚠ placeholder — reranker arrives in Phase 6", ms: 23 },
-    { l: "Generate answer", sub: "⚠ placeholder — generation arrives in Phase 7", ms: 450 },
-  ],
-  lat: { embed: 8, retrieve: 4, rerank: 23, generate: 450 },
+const $ = (id) => document.getElementById(id);
+const norm = (s) => s.trim().toLowerCase().replace(/\s+/g, " ");
+const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+const state = {
+  mode: "demo",            // "demo" | "live"
+  run: null,               // active run handle
+  asked: new Set(),        // normalized queries completed (demo cache sim)
+  hintShown: false,
 };
 
-/* ───────────────────────── helpers ───────────────────────── */
+/* ── run handle: timers + abort, so Stop works in both modes ────────── */
 
-const $ = id => document.getElementById(id);
-let running = false;
-const timers = [];
-const later = (fn, ms) => timers.push(setTimeout(fn, ms));
-
-function resetRun() {
-  timers.forEach(clearTimeout);
-  timers.length = 0;
-  $("trace").innerHTML = "";
-  $("passages").innerHTML = "";
-  $("answer").innerHTML = '<span class="cursor"></span>';
-  $("answer-pill").className = "pill working";
-  $("answer-pill").textContent = "retrieving…";
-  $("passage-count").textContent = "top-k";
-  ["embed","retrieve","rerank","generate"].forEach(k => {
-    const el = $("seg-" + k);
-    el.style.width = "0%"; el.textContent = "";
-  });
-  $("wf-total").textContent = "—";
+function newRun() {
+  const run = {
+    alive: true,
+    timers: [],
+    ctl: new AbortController(),
+    later(fn, ms) { if (this.alive) this.timers.push(setTimeout(() => { if (this.alive) fn(); }, ms)); },
+    stop() {
+      this.alive = false;
+      this.timers.forEach(clearTimeout);
+      this.timers.length = 0;
+      this.ctl.abort();
+    },
+  };
+  return run;
 }
 
-/* markdown-lite: **bold** and [n] citations */
+/* ── renderer ───────────────────────────────────────────────────────── */
+
+const R = {
+  rawAnswer: "",
+  abstained: false,
+  queryId: null,
+  passageStagger: 0,
+
+  reset() {
+    this.rawAnswer = "";
+    this.abstained = false;
+    this.queryId = null;
+    this.passageStagger = 0;
+    $("trace").innerHTML = "";
+    $("passages").innerHTML = "";
+    $("answer").innerHTML = '<span class="cursor"></span>';
+    $("answer-meta").className = "answer-meta";
+    $("answer-meta").innerHTML = "";
+    setPill("answer-pill", "working", "retrieving…");
+    $("passage-count").textContent = "top-k";
+    ["embed", "retrieve", "rerank", "generate"].forEach((k) => {
+      const el = $("seg-" + k);
+      el.style.width = "0%"; el.textContent = ""; el.style.display = "";
+    });
+    const wf = $("waterfall");
+    const cacheSeg = wf.querySelector(".seg.cache");
+    if (cacheSeg) cacheSeg.remove();
+    $("wf-total").textContent = "—";
+    $("wirelog").innerHTML = "";
+    this._lastTokenLine = null;
+    this._tokenCount = 0;
+  },
+
+  /* wire log */
+  _lastTokenLine: null,
+  _tokenCount: 0,
+  log(ev, data) {
+    const box = $("wirelog");
+    if (ev === "token") {
+      this._tokenCount++;
+      if (!this._lastTokenLine) {
+        this._lastTokenLine = document.createElement("div");
+        this._lastTokenLine.className = "wl e-token";
+        box.appendChild(this._lastTokenLine);
+      }
+      const preview = this.rawAnswer.slice(-46).replace(/^\S*\s/, "");
+      this._lastTokenLine.innerHTML =
+        "<b>token ×" + this._tokenCount + "</b><span>…" + escapeHtml(preview) + "</span>";
+    } else {
+      this._lastTokenLine = null;
+      const div = document.createElement("div");
+      div.className = "wl e-" + ev;
+      div.innerHTML = "<b>" + ev + "</b><span>" + escapeHtml(JSON.stringify(data)) + "</span>";
+      box.appendChild(div);
+      while (box.children.length > 250) box.removeChild(box.firstChild);
+    }
+    box.scrollTop = box.scrollHeight;
+  },
+
+  onQueryId(d) { this.queryId = d.id; },
+
+  onCacheHit(d) {
+    if (d.hit) {
+      setPill("answer-pill", "cached", "⚡ semantic cache · sim " + (d.sim ? d.sim.toFixed(3) : "≥0.97"));
+    }
+  },
+
+  /* trace: a "running" placeholder may exist (demo); finalize or append */
+  traceRunning(d) {
+    const ul = $("trace");
+    const li = document.createElement("li");
+    li.dataset.step = d.step;
+    li.className = (d.reflect ? "reflect " : "") + "running";
+    li.innerHTML =
+      '<span class="icon"></span>' +
+      '<span class="step-label">' + escapeHtml(d.label) + "<small>" + escapeHtml(d.sub || "") + "</small></span>" +
+      '<span class="ms"></span>';
+    ul.appendChild(li);
+    requestAnimationFrame(() => li.classList.add("on"));
+  },
+
+  onTraceStep(d) {
+    const ul = $("trace");
+    let li = ul.querySelector('li[data-step="' + CSS.escape(d.step) + '"].running');
+    if (!li) {
+      li = document.createElement("li");
+      li.dataset.step = d.step;
+      li.className = d.reflect ? "reflect" : "";
+      li.innerHTML =
+        '<span class="icon"></span>' +
+        '<span class="step-label">' + escapeHtml(d.label) + "<small>" + escapeHtml(d.sub || "") + "</small></span>" +
+        '<span class="ms"></span>';
+      ul.appendChild(li);
+      requestAnimationFrame(() => li.classList.add("on"));
+    } else {
+      li.querySelector(".step-label").innerHTML =
+        escapeHtml(d.label) + "<small>" + escapeHtml(d.sub || "") + "</small>";
+    }
+    li.classList.remove("running");
+    li.classList.add("done");
+    li.querySelector(".icon").textContent = d.skipped ? "—" : "✓";
+    li.querySelector(".ms").textContent = d.skipped ? "skipped" : d.ms + " ms";
+  },
+
+  skeletons() {
+    $("passages").innerHTML = '<div class="skeleton"></div>'.repeat(4);
+    $("passage-count").textContent = "no backend";
+  },
+
+  onPassage(p) {
+    const box = $("passages");
+    const sk = box.querySelector(".skeleton");
+    if (sk) box.innerHTML = "";
+    const div = document.createElement("div");
+    div.className = "passage";
+    div.dataset.num = p.num;
+    const dense = Math.max(0, Math.min(1, p.dense));
+    const bm25 = Math.max(0, Math.min(1, p.bm25 / 18));
+    const rr = Math.max(0, Math.min(1, p.rerank));
+    div.innerHTML =
+      '<div class="ptitle"><span class="pnum">' + p.num + "</span>" + escapeHtml(p.title) +
+      (p.hop ? ' <span class="hopbadge">HOP ' + p.hop + "</span>" : "") +
+      "</div>" +
+      '<div class="snippet">' + escapeHtml(p.snippet) + "</div>" +
+      '<div class="pscores">' +
+        scoreBar("dense", dense, p.dense.toFixed(2), false) +
+        scoreBar("bm25", bm25, p.bm25.toFixed(1), false) +
+        scoreBar("rerank", rr, p.rerank.toFixed(2), !!p.low) +
+      "</div>";
+    box.appendChild(div);
+    const delay = this.passageStagger++ * 110;
+    setTimeout(() => {
+      div.classList.add("on");
+      div.querySelectorAll(".sc em").forEach((em) => { em.style.setProperty("--w", em.dataset.w); });
+    }, delay + 40);
+    $("passage-count").textContent = "top-" + box.querySelectorAll(".passage").length;
+  },
+
+  genStart() { setPill("answer-pill", "working", "generating…"); },
+
+  onToken(d) {
+    this.rawAnswer += d.text;
+    const html = renderAnswer(this.rawAnswer) + '<span class="cursor"></span>';
+    $("answer").innerHTML = this.abstained
+      ? '<div class="abstain-note">' + html + "</div>" : html;
+  },
+
+  onDone(d) {
+    const ans = $("answer");
+    this.abstained = !!d.abstained;
+    let body = this.rawAnswer;
+    if (d.answer && !body) body = d.answer;          // cache replay may send full answer
+    const html = renderAnswer(body);
+    ans.innerHTML = this.abstained ? '<div class="abstain-note">' + html + "</div>" : html;
+
+    const pill = $("answer-pill");
+    if (d.cached) setPill("answer-pill", "cached", "⚡ cache hit · " + (d.total_ms ?? 1) + " ms");
+    else if (this.abstained) setPill("answer-pill", "abstained", "abstained — low evidence");
+    else if (d.generation_unavailable) setPill("answer-pill", "abstained", "generation unavailable — passages only");
+    else if (d.mode === "placeholder") setPill("answer-pill", "abstained", "demo placeholder");
+    else setPill("answer-pill", "grounded", "grounded" + (d.faith ? " · " + d.faith + "% faithful" : ""));
+
+    fillWaterfall(d);
+    this.renderMeta(d);
+    wireCitations();
+    finishRun();
+  },
+
+  onError(msg) {
+    $("answer").innerHTML = '<div class="abstain-note">' + escapeHtml(msg) + "</div>";
+    setPill("answer-pill", "err", "error");
+    this.log("error", { message: msg });
+    finishRun();
+  },
+
+  renderMeta(d) {
+    const meta = $("answer-meta");
+    const bits = [];
+    if (this.queryId) bits.push("<span>" + escapeHtml(this.queryId) + "</span>");
+    if (d.cost) {
+      bits.push("<span>$" + d.cost.usd.toFixed(5) + "</span>");
+      bits.push("<span>" + d.cost.in.toLocaleString() + " in / " + d.cost.out + " out tok</span>");
+    }
+    if (d.cached) bits.push('<span style="color:var(--cy)">served from semantic cache</span>');
+    meta.innerHTML = bits.join('<span style="opacity:.4">·</span>') +
+      '<button class="copy" id="copy-btn">copy answer</button>';
+    meta.classList.add("show");
+    $("copy-btn").addEventListener("click", () => {
+      navigator.clipboard.writeText($("answer").textContent.trim()).then(() => {
+        $("copy-btn").textContent = "copied ✓";
+        setTimeout(() => { const b = $("copy-btn"); if (b) b.textContent = "copy answer"; }, 1400);
+      });
+    });
+  },
+};
+
+function setPill(id, cls, text) {
+  const el = $(id);
+  el.className = "pill " + cls;
+  el.textContent = text;
+}
+
+function scoreBar(label, frac, display, low) {
+  return '<span class="sc' + (low ? " low" : "") + '"><i>' + label + "</i>" +
+    '<em data-w="' + Math.round(frac * 100) + '%"></em>' +
+    "<b>" + display + "</b></span>";
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/* markdown-lite: **bold** and [n] citations (escape first) */
 function renderAnswer(text) {
-  return text
+  return escapeHtml(text)
     .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
     .replace(/\[(\d+)\]/g, '<sup class="cite" data-ref="$1">$1</sup>');
 }
 
-function streamAnswer(raw, mode, faith) {
-  let body = raw, abstain = false, placeholder = false;
-  if (raw.startsWith("ABSTAIN::")) { body = raw.slice(9); abstain = true; }
-  if (raw.startsWith("PLACEHOLDER::")) { body = raw.slice(13); placeholder = true; }
-
-  const words = body.split(" ");
-  let i = 0;
-  const el = $("answer");
-
-  function step() {
-    i++;
-    const partial = words.slice(0, i).join(" ");
-    const html = renderAnswer(partial) + '<span class="cursor"></span>';
-    el.innerHTML = abstain ? '<div class="abstain-note">' + html + "</div>" : html;
-    if (i < words.length) {
-      later(step, 24 + Math.random() * 30);
-    } else {
-      el.innerHTML = abstain
-        ? '<div class="abstain-note">' + renderAnswer(body) + "</div>"
-        : renderAnswer(body);
-      const pill = $("answer-pill");
-      if (abstain) { pill.className = "pill abstained"; pill.textContent = "abstained — low evidence"; }
-      else if (placeholder) { pill.className = "pill abstained"; pill.textContent = "placeholder"; }
-      else { pill.className = "pill grounded"; pill.textContent = "grounded · " + faith + "% faithful"; }
-      wireCitations();
-      running = false;
-    }
-  }
-  step();
-}
-
 function wireCitations() {
-  document.querySelectorAll(".cite").forEach(c => {
-    const ref = c.dataset.ref;
-    const target = document.querySelector('.passage[data-num="' + ref + '"]');
+  document.querySelectorAll(".cite").forEach((c) => {
+    const target = document.querySelector('.passage[data-num="' + c.dataset.ref + '"]');
     if (!target) return;
     c.addEventListener("mouseenter", () => target.classList.add("glow"));
     c.addEventListener("mouseleave", () => target.classList.remove("glow"));
@@ -499,100 +1168,425 @@ function wireCitations() {
   });
 }
 
-function showPassages(passages) {
-  const box = $("passages");
-  if (!passages) {           // generic query → skeletons
-    box.innerHTML = '<div class="skeleton"></div>'.repeat(4);
-    $("passage-count").textContent = "awaiting backend";
+function fillWaterfall(d) {
+  const wf = $("waterfall");
+  if (d.cached) {
+    ["embed", "retrieve", "rerank", "generate"].forEach((k) => { $("seg-" + k).style.display = "none"; });
+    const seg = document.createElement("div");
+    seg.className = "seg cache";
+    seg.style.width = "100%";
+    seg.textContent = "semantic cache · " + (d.total_ms ?? 1) + " ms";
+    wf.appendChild(seg);
+    $("wf-total").textContent = "total " + (d.total_ms ?? 1) + " ms · pipeline skipped";
     return;
   }
-  $("passage-count").textContent = "top-" + passages.length;
-  passages.forEach((p, idx) => {
-    const div = document.createElement("div");
-    div.className = "passage";
-    div.dataset.num = idx + 1;
-    div.innerHTML =
-      '<div class="ptitle"><span class="pnum">' + (idx + 1) + "</span>" + p.t +
-      (p.hop ? ' <span class="tag hop" style="font-size:9.5px;padding:2px 6px;border-radius:5px">HOP ' + p.hop + "</span>" : "") +
-      "</div>" +
-      '<div class="snippet">' + p.s + "</div>" +
-      '<div class="scores">' +
-        '<span class="score">dense<b>' + p.d.toFixed(2) + "</b></span>" +
-        '<span class="score">bm25<b>' + p.b.toFixed(1) + "</b></span>" +
-        '<span class="score' + (p.low ? " low" : "") + '">rerank<b>' + p.r.toFixed(2) + "</b></span>" +
-      "</div>";
-    box.appendChild(div);
-    later(() => div.classList.add("on"), 120 * idx + 60);
-  });
-}
-
-function runTrace(steps, onDone) {
-  const ul = $("trace");
-  let t = 0;
-  steps.forEach((s, idx) => {
-    const li = document.createElement("li");
-    li.className = s.reflect ? "reflect" : "";
-    li.innerHTML =
-      '<span class="icon"></span>' +
-      '<span class="step-label">' + s.l + "<small>" + s.sub + "</small></span>" +
-      '<span class="ms">' + (s.skipped ? "skipped" : s.ms + " ms") + "</span>";
-    ul.appendChild(li);
-
-    later(() => { li.classList.add("on", "running"); }, t);
-    const dur = Math.max(260, Math.min(s.ms, 900));
-    t += dur;
-    later(() => {
-      li.classList.remove("running");
-      li.classList.add("done");
-      li.querySelector(".icon").textContent = s.skipped ? "—" : "✓";
-      if (idx === steps.length - 1) onDone();
-    }, t);
-    t += 80;
-  });
-}
-
-function fillWaterfall(lat) {
+  const lat = d.lat || { embed: 0, retrieve: 0, rerank: 0, generate: 0 };
   const total = lat.embed + lat.retrieve + lat.rerank + lat.generate;
-  const min = 4; // % floor so tiny segments stay visible
+  if (!total) return;
+  const min = 4;
   const segs = ["embed", "retrieve", "rerank", "generate"];
   let used = 0;
   const pcts = {};
-  segs.forEach(k => { pcts[k] = lat[k] === 0 ? 0 : Math.max(min, (lat[k] / total) * 100); used += pcts[k]; });
-  segs.forEach(k => {
+  segs.forEach((k) => { pcts[k] = lat[k] === 0 ? 0 : Math.max(min, (lat[k] / total) * 100); used += pcts[k]; });
+  segs.forEach((k) => {
     const el = $("seg-" + k);
     el.style.width = (pcts[k] / used * 100) + "%";
     if (lat[k] > 0) el.textContent = lat[k] + "ms";
   });
-  $("wf-total").textContent = "total " + total + " ms" + (lat.generate === 0 ? " · LLM call skipped" : " · P95 budget 800 ms");
+  $("wf-total").textContent = "total " + total + " ms" +
+    (lat.generate === 0 ? " · LLM call skipped" : " · P95 budget 800 ms");
 }
 
-/* ───────────────────────── orchestrator ───────────────────────── */
+/* ── event dispatch (shared by live + demo) ─────────────────────────── */
+
+function dispatch(ev, data) {
+  R.log(ev, data);
+  switch (ev) {
+    case "query_id": R.onQueryId(data); break;
+    case "cache_hit": R.onCacheHit(data); break;
+    case "trace_step": R.onTraceStep(data); break;
+    case "passage": R.onPassage(data); break;
+    case "generation_start": R.genStart(); break;
+    case "token": R.onToken(data); break;
+    case "done": R.onDone(data); break;
+    case "error": R.onError(data.message || "stream error"); break;
+  }
+}
+
+/* ── live mode: POST /query, parse SSE ──────────────────────────────── */
+
+async function runLive(q, run) {
+  let res;
+  try {
+    res = await fetch(CFG.apiBase + "/query", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(CFG.token ? { Authorization: "Bearer " + CFG.token } : {}),
+      },
+      body: JSON.stringify({ question: q, top_k: 5 }),
+      signal: run.ctl.signal,
+    });
+  } catch (e) {
+    if (run.alive) R.onError("Could not reach backend at " + CFG.apiBase + " — check settings, or use demo mode.");
+    return;
+  }
+  if (res.status === 401) { R.onError("401 unauthorized — set your bearer token in settings (gear icon)."); return; }
+  if (res.status === 429) {
+    R.onError("429 rate limited — retry in " + (res.headers.get("Retry-After") || "a few") + "s.");
+    return;
+  }
+  if (!res.ok || !res.body) { R.onError("Backend error " + res.status + "."); return; }
+
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "", ev = null;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i;
+      while ((i = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, i).replace(/\r$/, "");
+        buf = buf.slice(i + 1);
+        if (line.startsWith("event:")) ev = line.slice(6).trim();
+        else if (line.startsWith("data:")) {
+          let payload = {};
+          try { payload = JSON.parse(line.slice(5).trim()); } catch { /* keep {} */ }
+          if (ev && run.alive) dispatch(ev, payload);
+        } else if (line === "") ev = null;
+      }
+    }
+  } catch (e) {
+    if (run.alive) R.onError("Stream interrupted: " + e.message);
+  }
+}
+
+/* ── demo mode: recorded runs replayed through the same protocol ────── */
+
+const DEMOS = {
+  "why is the sky blue?": {
+    faith: 96,
+    cost: { usd: 0.00058, in: 4012, out: 96 },
+    passages: [
+      { num: 1, title: "Rayleigh scattering", snippet: "Rayleigh scattering is the scattering of light by particles much smaller than the wavelength of the radiation. The intensity of scattered light varies inversely with the fourth power of the wavelength, so shorter (blue) wavelengths are scattered much more strongly than longer (red) ones…", dense: 0.87, bm25: 14.2, rerank: 0.97 },
+      { num: 2, title: "Diffuse sky radiation", snippet: "Diffuse sky radiation is solar radiation reaching the Earth's surface after having been scattered by molecules in the atmosphere. Of the visible wavelengths, blue light is scattered most efficiently, which is why the clear daytime sky appears blue when viewed away from the sun…", dense: 0.84, bm25: 11.8, rerank: 0.94 },
+      { num: 3, title: "Sunset", snippet: "During sunset, sunlight traverses a much longer path through the atmosphere. Most short-wavelength blue light is scattered out of the line of sight before reaching the observer, leaving the longer red and orange wavelengths to dominate the sky's appearance…", dense: 0.79, bm25: 9.1, rerank: 0.88 },
+      { num: 4, title: "Atmosphere of Earth", snippet: "The atmosphere of Earth is composed primarily of nitrogen (78%) and oxygen (21%). These molecules are far smaller than the wavelength of visible light, placing atmospheric scattering firmly in the Rayleigh regime…", dense: 0.76, bm25: 8.7, rerank: 0.71 },
+    ],
+    answer: "The sky appears blue because of **Rayleigh scattering** — the scattering of sunlight by gas molecules in Earth's atmosphere [1]. The intensity of this scattering is proportional to 1/λ⁴, so shorter blue wavelengths (~450 nm) scatter far more strongly than longer red ones [1]. When you look at the daytime sky away from the sun, you are seeing this scattered blue light arriving from every direction [2]. At sunset the light's path through the atmosphere is much longer, so most of the blue has already been scattered away — which is why the horizon turns red and orange instead [3].",
+    steps: [
+      { step: "embed", label: "Embed query", sub: "bge-small-en-v1.5 · 384d", ms: 11 },
+      { step: "retrieve", label: "Retrieve top-100 ×2", sub: "HNSW ef=64 (0.4 ms) + bm25s, RRF → 20", ms: 2, passagesAfter: true },
+      { step: "rerank", label: "Rerank 20 → 4", sub: "bge-reranker-base cross-encoder", ms: 38 },
+      { step: "verify", label: "Verify evidence", sub: "max rerank 0.97 ≥ abstention threshold ✓", ms: 1, reflect: true },
+    ],
+    lat: { embed: 11, retrieve: 2, rerank: 38, generate: 610 },
+  },
+
+  "what is the capital of the country where the eiffel tower is located?": {
+    faith: 94,
+    cost: { usd: 0.00074, in: 5210, out: 44 },
+    passages: [
+      { num: 1, title: "Eiffel Tower", snippet: "The Eiffel Tower is a wrought-iron lattice tower on the Champ de Mars in Paris, France. It is named after the engineer Gustave Eiffel, whose company designed and built the tower for the 1889 World's Fair…", dense: 0.91, bm25: 16.8, rerank: 0.98, hop: 1 },
+      { num: 2, title: "France", snippet: "France, officially the French Republic, is a country located primarily in Western Europe. Its capital and largest city is Paris, which is also the country's principal cultural and commercial centre…", dense: 0.83, bm25: 12.4, rerank: 0.95, hop: 2 },
+      { num: 3, title: "Paris", snippet: "Paris is the capital and largest city of France. With an official population of over two million residents, it has been one of Europe's major centres of finance, diplomacy, commerce, culture and science since the 17th century…", dense: 0.81, bm25: 11.6, rerank: 0.93, hop: 2 },
+    ],
+    answer: "The Eiffel Tower stands on the Champ de Mars in **Paris, France** [1]. The capital of France is **Paris** [2][3] — so the capital of the country where the Eiffel Tower is located is **Paris**.",
+    steps: [
+      { step: "embed", label: "Embed query", sub: "bge-small-en-v1.5 · 384d", ms: 11 },
+      { step: "hop1", label: "Hop 1 — retrieve", sub: "best evidence: “Eiffel Tower” (rerank 0.98)", ms: 3, passagesAfter: true },
+      { step: "bridge", label: "Extract bridge entity", sub: "gpt-4o-mini → next query: “capital of France”", ms: 420, reflect: true },
+      { step: "hop2", label: "Hop 2 — retrieve", sub: "rewritten sub-query · hybrid retrieval", ms: 3 },
+      { step: "rerank", label: "Rerank 40 → 3", sub: "cross-encoder over both hops", ms: 41 },
+    ],
+    lat: { embed: 11, retrieve: 6, rerank: 41, generate: 980 },
+  },
+
+  "who won the 2031 fifa world cup?": {
+    abstain: true,
+    cost: { usd: 0.00002, in: 180, out: 0 },
+    passages: [
+      { num: 1, title: "FIFA World Cup", snippet: "The FIFA World Cup is an international association football competition between the senior men's national teams of the members of FIFA. The tournament has been held every four years since the inaugural event in 1930…", dense: 0.62, bm25: 10.3, rerank: 0.31, low: true },
+      { num: 2, title: "2026 FIFA World Cup", snippet: "The 2026 FIFA World Cup will be jointly hosted by 16 cities in three North American countries: Canada, Mexico, and the United States. It will be the first World Cup to feature 48 teams…", dense: 0.58, bm25: 9.7, rerank: 0.27, low: true },
+      { num: 3, title: "List of FIFA World Cup finals", snippet: "The FIFA World Cup final is the last match of the competition. The most recent final listed in this corpus snapshot took place prior to the December 2025 dump date…", dense: 0.55, bm25: 8.2, rerank: 0.22, low: true },
+    ],
+    answer: "I can't answer this from the corpus. The 2031 FIFA World Cup post-dates this Wikipedia snapshot (December 2025), and the best retrieved evidence scored **0.31** — below the abstention threshold of **0.55**. Rather than guess, the system declines to answer.",
+    steps: [
+      { step: "embed", label: "Embed query", sub: "bge-small-en-v1.5 · 384d", ms: 11 },
+      { step: "retrieve", label: "Retrieve top-100 ×2", sub: "HNSW + bm25s, RRF → 20", ms: 2, passagesAfter: true },
+      { step: "rerank", label: "Rerank 20 → 3", sub: "bge-reranker-base cross-encoder", ms: 39 },
+      { step: "verify", label: "Verify evidence", sub: "max rerank 0.31 < threshold 0.55 ✗ — abstaining", ms: 1, reflect: true },
+      { step: "generate", label: "Generate answer", sub: "skipped — abstention saves the LLM call entirely", ms: 0, skipped: true },
+    ],
+    lat: { embed: 11, retrieve: 2, rerank: 39, generate: 0 },
+  },
+};
+
+const GENERIC = {
+  placeholder: true,
+  answer: "This is **demo mode** — the page is replaying recorded pipeline runs, and only the three example queries have a recorded run. Once the FastAPI backend is up, every question streams a real answer over SSE: set the API URL via the gear icon, and this exact page goes live with zero code changes. Try one of the chips above to see grounded citations, multi-hop bridging, and abstention.",
+  steps: [
+    { step: "embed", label: "Embed query", sub: "bge-small-en-v1.5 · 384d", ms: 11 },
+    { step: "retrieve", label: "Retrieve", sub: "no recorded run for this query in demo mode", ms: 2, skeletonsAfter: true },
+    { step: "rerank", label: "Rerank", sub: "waiting for the live backend", ms: 0, skipped: true },
+    { step: "generate", label: "Generate", sub: "waiting for the live backend", ms: 0, skipped: true },
+  ],
+  lat: { embed: 11, retrieve: 2, rerank: 0, generate: 0 },
+};
+
+function demoId() {
+  return "q_" + Math.random().toString(36).slice(2, 8);
+}
+
+function runDemo(q, run) {
+  const key = norm(q);
+  const demo = DEMOS[key] || null;
+  const cached = !!demo && state.asked.has(key);
+  let t = 80;
+  const emit = (ev, data, dt = 0) => { t += dt; run.later(() => dispatch(ev, data), t); };
+
+  emit("query_id", { id: demoId() });
+  emit("cache_hit", cached ? { hit: true, sim: 0.984 } : { hit: false }, 60);
+
+  /* ── cache replay: skip the whole pipeline ── */
+  if (cached) {
+    demo.passages.forEach((p) => emit("passage", p, 30));
+    const words = demo.answer.split(" ");
+    words.forEach((w, i) => emit("token", { text: w + (i < words.length - 1 ? " " : "") }, 5));
+    emit("done", {
+      mode: demo.abstain ? "abstain" : "grounded",
+      faith: demo.faith,
+      abstained: !!demo.abstain,
+      cached: true,
+      total_ms: 1,
+      cost: { usd: 0, in: 0, out: 0 },
+    }, 60);
+    return;
+  }
+
+  /* ── full pipeline replay ── */
+  const script = demo || GENERIC;
+  script.steps.forEach((s) => {
+    emit("trace_running", s, 40);                       // local-only: spinner
+    const anim = s.skipped ? 220 : Math.max(300, Math.min(s.ms, 900));
+    emit("trace_step", { step: s.step, label: s.label, sub: s.sub, ms: s.ms, reflect: !!s.reflect, skipped: !!s.skipped }, anim);
+    if (s.passagesAfter && demo) demo.passages.forEach((p) => emit("passage", p, 50));
+    if (s.skeletonsAfter) emit("skeletons", {}, 30);
+  });
+
+  if (script.placeholder || demo?.abstain || demo) {
+    if (!script.placeholder && !demo.abstain) emit("generation_start", {}, 120);
+    const words = script.answer.split(" ");
+    t += 200;
+    words.forEach((w, i) => emit("token", { text: w + (i < words.length - 1 ? " " : "") }, REDUCED ? 4 : 22 + Math.random() * 26));
+    emit("done", {
+      mode: script.placeholder ? "placeholder" : (demo.abstain ? "abstain" : "grounded"),
+      faith: demo?.faith,
+      abstained: !!demo?.abstain,
+      lat: script.lat,
+      total_ms: script.lat ? script.lat.embed + script.lat.retrieve + script.lat.rerank + script.lat.generate : 0,
+      cost: demo?.cost,
+    }, 120);
+  }
+
+  if (demo) run.later(() => {
+    state.asked.add(key);
+    if (!state.hintShown) { state.hintShown = true; $("cache-hint").classList.add("show"); }
+  }, t + 200);
+}
+
+/* demo-only local events that aren't part of the SSE contract */
+const _dispatch = dispatch;
+dispatch = function (ev, data) {
+  if (ev === "trace_running") { R.traceRunning(data); return; }   // not logged
+  if (ev === "skeletons") { R.skeletons(); return; }
+  _dispatch(ev, data);
+};
+
+/* ── orchestrator ───────────────────────────────────────────────────── */
 
 function ask(q) {
-  if (!q.trim() || running) return;
-  running = true;
-  resetRun();
-  $("results").classList.add("show");
-  $("results").scrollIntoView({ behavior: "smooth", block: "start" });
+  if (!q.trim()) return;
+  if (state.run) state.run.stop();
+  const run = newRun();
+  state.run = run;
 
-  const demo = DEMOS[q.trim().toLowerCase()] || GENERIC;
+  R.reset();
+  $("wire-mode").textContent = state.mode;
+  $("console").classList.add("show");
+  $("console").scrollIntoView({ behavior: REDUCED ? "auto" : "smooth", block: "start" });
+  setAskButton(true);
 
-  later(() => showPassages(demo.passages), 500);
-  runTrace(demo.trace, () => {
-    fillWaterfall(demo.lat);
-    $("answer-pill").textContent = "generating…";
-    later(() => streamAnswer(demo.answer, demo.mode, demo.faith), 250);
-  });
+  if (state.mode === "live") {
+    runLive(q, run).finally(() => { if (state.run === run) finishRun(); });
+  } else {
+    runDemo(q, run);
+  }
 }
 
-$("ask").addEventListener("click", () => ask($("q").value));
-$("q").addEventListener("keydown", e => { if (e.key === "Enter") ask($("q").value); });
-document.querySelectorAll(".chip").forEach(c =>
+function finishRun() {
+  if (state.run) { state.run.alive = false; }
+  setAskButton(false);
+}
+
+function setAskButton(running) {
+  const btn = $("ask");
+  btn.textContent = running ? "Stop" : "Ask";
+  btn.className = running ? "stop" : "";
+}
+
+$("ask").addEventListener("click", () => {
+  if ($("ask").textContent === "Stop" && state.run) {
+    state.run.stop();
+    setAskButton(false);
+    setPill("answer-pill", "err", "stopped");
+    return;
+  }
+  ask($("q").value);
+});
+$("q").addEventListener("keydown", (e) => { if (e.key === "Enter") ask($("q").value); });
+document.querySelectorAll(".chip").forEach((c) =>
   c.addEventListener("click", () => { $("q").value = c.dataset.q; ask(c.dataset.q); })
 );
-document.addEventListener("keydown", e => {
-  if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault(); $("q").focus(); }
+
+/* ── backend probe / mode badge ─────────────────────────────────────── */
+
+async function probe(showStatus) {
+  const badge = $("mode-badge");
+  badge.className = "mode-badge";
+  $("mode-text").textContent = "CHECKING…";
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 1800);
+  try {
+    const r = await fetch(CFG.apiBase + "/health", {
+      signal: ctl.signal,
+      headers: CFG.token ? { Authorization: "Bearer " + CFG.token } : {},
+    });
+    clearTimeout(timer);
+    if (r.ok) {
+      const h = await r.json().catch(() => ({}));
+      state.mode = "live";
+      badge.className = "mode-badge live";
+      $("mode-text").textContent = "LIVE";
+      if (showStatus) $("probe-status").textContent =
+        "✓ connected" + (h.cache_hit_rate != null ? " · cache hit rate " + (h.cache_hit_rate * 100).toFixed(0) + "%" : "");
+      return;
+    }
+  } catch { /* fall through to demo */ }
+  clearTimeout(timer);
+  state.mode = "demo";
+  badge.className = "mode-badge demo";
+  $("mode-text").textContent = "DEMO";
+  if (showStatus) $("probe-status").textContent = "✗ no backend at " + CFG.apiBase + " — demo mode";
+}
+
+/* ── settings popover ───────────────────────────────────────────────── */
+
+const settingsEl = $("settings");
+function toggleSettings(open) {
+  const want = open ?? !settingsEl.classList.contains("open");
+  settingsEl.classList.toggle("open", want);
+  if (want) {
+    $("cfg-url").value = CFG.apiBase;
+    $("cfg-token").value = CFG.token;
+    $("probe-status").textContent = "";
+  }
+}
+$("settings-btn").addEventListener("click", (e) => { e.stopPropagation(); toggleSettings(); });
+$("mode-badge").addEventListener("click", (e) => { e.stopPropagation(); toggleSettings(true); });
+$("cfg-save").addEventListener("click", () => {
+  CFG.apiBase = $("cfg-url").value.trim().replace(/\/$/, "") || "http://localhost:8000";
+  CFG.token = $("cfg-token").value.trim();
+  $("probe-status").textContent = "probing…";
+  probe(true);
 });
+document.addEventListener("click", (e) => {
+  if (settingsEl.classList.contains("open") && !settingsEl.contains(e.target)) toggleSettings(false);
+});
+settingsEl.addEventListener("click", (e) => e.stopPropagation());
+
+/* ── keyboard ───────────────────────────────────────────────────────── */
+
+document.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault(); $("q").focus(); $("q").select(); }
+  if (e.key === "Escape") {
+    if (settingsEl.classList.contains("open")) toggleSettings(false);
+    else if (state.run && state.run.alive && $("ask").textContent === "Stop") { state.run.stop(); setAskButton(false); }
+    else $("q").blur();
+  }
+});
+
+/* ── header scroll state ────────────────────────────────────────────── */
+
+const hdr = $("hdr");
+addEventListener("scroll", () => hdr.classList.toggle("scrolled", scrollY > 8), { passive: true });
+
+/* ── cycling placeholder ────────────────────────────────────────────── */
+
+const PLACEHOLDERS = [
+  "Why is the sky blue?",
+  "What is the capital of the country where the Eiffel Tower is located?",
+  "Who discovered penicillin, and where?",
+  "Which planet has the most moons?",
+  "Who won the 2031 FIFA World Cup?",
+];
+if (!REDUCED) {
+  let phi = 0;
+  setInterval(() => {
+    const q = $("q");
+    if (document.activeElement === q || q.value) return;
+    phi = (phi + 1) % PLACEHOLDERS.length;
+    q.placeholder = PLACEHOLDERS[phi];
+  }, 3800);
+}
+
+/* ── scroll reveals + count-ups ─────────────────────────────────────── */
+
+const io = new IntersectionObserver((entries) => {
+  entries.forEach((en) => {
+    if (!en.isIntersecting) return;
+    en.target.classList.add("rv-in");
+    en.target.querySelectorAll("[data-cu]").forEach(runCountUp);
+    if (en.target.matches("[data-cu]")) runCountUp(en.target);
+    en.target.querySelectorAll(".empair .bar").forEach((b) => { b.style.height = b.dataset.h; });
+    io.unobserve(en.target);
+  });
+}, { threshold: 0.25 });
+document.querySelectorAll("[data-rv]").forEach((el) => io.observe(el));
+
+function fmtCount(el, v) {
+  const dec = parseInt(el.dataset.dec || "0", 10);
+  const fmt = el.dataset.fmt;
+  let s;
+  if (fmt === "compact") s = v >= 1e6 ? (v / 1e6).toFixed(1).replace(/\.0$/, "") + "M" : Math.round(v).toLocaleString();
+  else if (fmt === "comma") s = Math.round(v).toLocaleString();
+  else s = v.toFixed(dec);
+  el.textContent = (el.dataset.pre || "") + s + (el.dataset.suf || "");
+}
+function runCountUp(el) {
+  if (el.dataset.cuDone) return;
+  el.dataset.cuDone = "1";
+  const target = parseFloat(el.dataset.cu);
+  if (REDUCED) { fmtCount(el, target); return; }
+  const t0 = performance.now(), dur = 1100;
+  (function tick(now) {
+    const p = Math.min(1, (now - t0) / dur);
+    fmtCount(el, target * (1 - Math.pow(1 - p, 3)));
+    if (p < 1) requestAnimationFrame(tick);
+  })(t0);
+}
+
+/* ── pipeline dot animation keyframes (JS-injected: offset-distance) ── */
+
+const styleEl = document.createElement("style");
+styleEl.textContent = "@keyframes pflow { from { offset-distance: 0%; opacity: 0; } 12% { opacity: 1; } 88% { opacity: 1; } to { offset-distance: 100%; opacity: 0; } }";
+document.head.appendChild(styleEl);
+
+/* ── boot ───────────────────────────────────────────────────────────── */
+
+probe(false);
 </script>
 </body>
 </html>

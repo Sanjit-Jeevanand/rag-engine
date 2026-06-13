@@ -3,6 +3,8 @@ from typing import Any
 import numpy as np
 from sentence_transformers import CrossEncoder
 
+from rag_engine.cost import cost_tracker
+
 
 class CrossEncoderReranker:
     _model: Any
@@ -18,6 +20,7 @@ class CrossEncoderReranker:
     ) -> np.ndarray:
         pairs = [(query, doc_texts.get(doc_id, "")) for doc_id in candidates]
         raw: Any = self._model.predict(pairs)
+        cost_tracker.add_reranker(len(candidates))
         return np.asarray(raw, dtype=np.float32)
 
     def rerank(
@@ -30,5 +33,6 @@ class CrossEncoderReranker:
         pairs = [(query, doc_texts.get(doc_id, "")) for doc_id in candidates]
         raw: Any = self._model.predict(pairs)
         scores: np.ndarray = np.asarray(raw, dtype=np.float32)
+        cost_tracker.add_reranker(len(candidates))
         ranked_idx = np.argsort(scores)[::-1]
         return [candidates[int(i)] for i in ranked_idx[:k]]

@@ -380,3 +380,59 @@ PYTHONPATH=src:. uv run --env-file .env python scripts/analyze_failures.py      
 PYTHONPATH=src:. uv run --env-file .env python scripts/hotpotqa_agentic_eval.py --n 20               # smoke
 PYTHONPATH=src:. uv run --env-file .env python scripts/hotpotqa_agentic_eval.py --n 100              # full eval
 ```
+
+---
+
+## Phase 7 — Full Benchmark Run & Cost Accounting ✅
+Goal: produce credible, reproducible benchmark numbers and prove cost is production-viable.
+
+### Files Created / Modified
+| File | Type | Change |
+|------|------|--------|
+| `src/rag_engine/cost.py` | library (new) | CostTracker + CostSnapshot; thread-local, reset per question |
+| `src/rag_engine/agent/llm.py` | library | Instrumented `complete()` with `response.usage` token capture |
+| `src/rag_engine/retrieval/reranker.py` | library | Added `cost_tracker.add_reranker()` to `scores()` and `rerank()` |
+| `scripts/beir_eval.py` | script (rewrite) | Full hybrid+rerank on 3 BEIR datasets; embedding cache; pytrec_eval |
+| `scripts/hotpotqa_full_eval.py` | script (new) | Multi-hop only; seeded sample; cost per query; hop breakdown |
+
+### BEIR Results (hybrid BM25+dense → RRF → cross-encoder rerank, pytrec_eval)
+| Dataset | Docs | Queries | nDCG@10 | Recall@10 | MRR |
+|---------|------|---------|---------|-----------|-----|
+| SciFact | 5,183 | 300 | **0.7253** | 0.8529 | 0.6917 |
+| NFCorpus | 3,633 | 323 | **0.3311** | 0.1609 | 0.5383 |
+| ArguAna | 8,674 | 1,406 | **0.2826** | 0.6166 | 0.1793 |
+
+### HotpotQA Cost Probe (20 questions, seed=42)
+| Metric | Value |
+|--------|-------|
+| EM | 0.40 |
+| F1 | 0.51 |
+| Avg hops | 2.00 |
+| Avg input tokens | 4,159.6 |
+| Avg output tokens | 41.0 |
+| Avg reranker calls | 43.0 |
+| **Avg cost/query** | **$0.00060** |
+| Budget target | $0.005 |
+| Within budget | ✓ (12% of target) |
+
+### Key Decisions
+- **`rag_engine.cost` not `rag_engine.agent.cost`**: `reranker.py` importing from `agent.cost` created a circular import (`reranker → agent.__init__ → loop → reranker`); moving to top-level broke the cycle
+- **`datasets` over `beir` package**: HuggingFace `datasets` (already a dep) loads all BEIR corpora directly; avoids adding `beir`'s complex dependency tree
+- **pytrec_eval over custom metrics**: official TREC evaluation library matches BEIR leaderboard methodology exactly
+- **Embedding cache per dataset**: 17K docs × 384-dim takes ~2 min to embed; cached to `data/beir_embeddings/<dataset>/` — re-runs are instant
+- **ArguAna below BM25 baseline**: counter-argument queries pull dense similarity toward same-topic docs rather than the single target document; known ArguAna quirk, not a bug
+- **Cost at $0.00060/query**: 8× under budget; 1,000-question full run would cost ~$0.60
+
+### Concepts Covered
+- pytrec_eval / TREC evaluation methodology — nDCG@10 as the BEIR leaderboard standard
+- Thread-local cost accumulation — `threading.local()` for implicit per-request tracking without signature changes
+- Circular import resolution — move shared utilities above the modules that cause the cycle
+- BEIR dataset characteristics — SciFact (binary), NFCorpus (graded, many relevant), ArguAna (counter-argument, 1 relevant per query)
+- Cost modeling for LLM pipelines — dominant cost is LLM input tokens (context window); output tokens (~41) are negligible
+
+### Commands Run
+```bash
+uv add pytrec-eval-terrier
+PYTHONPATH=src:. uv run python scripts/beir_eval.py
+PYTHONPATH=src:. uv run --env-file .env python scripts/hotpotqa_full_eval.py --n 20
+```

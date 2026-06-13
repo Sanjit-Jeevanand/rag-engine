@@ -2,6 +2,8 @@ from typing import Any
 
 from openai import OpenAI
 
+from rag_engine.cost import cost_tracker
+
 _client: OpenAI | None = None
 
 
@@ -28,4 +30,9 @@ def complete(
         max_tokens=max_tokens,
         messages=msgs,  # type: ignore[arg-type]
     )
+    if response.usage:
+        cost_tracker.add_llm(
+            input_tokens=response.usage.prompt_tokens,
+            output_tokens=response.usage.completion_tokens,
+        )
     return response.choices[0].message.content or ""

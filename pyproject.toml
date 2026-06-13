@@ -19,6 +19,7 @@ dependencies = [
     "tqdm>=4.68.2",
     "transformers>=5.0.0rc3",
     "openai>=2.41.1",
+    "pytrec-eval-terrier>=0.5.10",
 ]
 
 [dependency-groups]

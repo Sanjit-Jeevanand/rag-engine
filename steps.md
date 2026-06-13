@@ -383,3 +383,43 @@ Use this to reproduce the build from scratch or hand off to another engineer.
      → Δ EM = +0.20 (target was +0.10) ✓
      → Abstention:   4/5 out-of-corpus caught, 8/100 in-corpus false positives
      → Hallucinations: 0/100 ✓
+
+---
+
+## Phase 7 — Full Benchmark Run & Cost Accounting
+
+### Cost tracker
+115. Create `src/rag_engine/cost.py`: `CostTracker` (thread-local accumulator) + `CostSnapshot` (frozen dataclass)
+     - Pricing constants: gpt-4o-mini input $0.15/1M, output $0.60/1M, text-embedding-3-small $0.02/1M
+     - `add_llm(input_tokens, output_tokens)`, `add_embed(tokens)`, `add_reranker(n_docs)`
+     - `reset()` before each question, `snapshot()` returns `CostSnapshot` with `estimated_usd` computed property
+     - Note: placed at `rag_engine.cost` (not `rag_engine.agent.cost`) to avoid circular import with `reranker.py`
+116. Instrument `src/rag_engine/agent/llm.py`: `complete()` reads `response.usage.prompt_tokens` / `completion_tokens` after every API call → `cost_tracker.add_llm()`
+117. Instrument `src/rag_engine/retrieval/reranker.py`: `scores()` and `rerank()` both call `cost_tracker.add_reranker(len(candidates))`
+
+### BEIR full run
+118. `uv add pytrec-eval-terrier` — official BEIR evaluation library (matches leaderboard methodology)
+119. Rewrite `scripts/beir_eval.py`: full hybrid + rerank pipeline on SciFact, NFCorpus, ArguAna
+     - Loads corpora via HuggingFace `datasets` (already a dep; no `beir` package needed)
+     - Dense index per dataset: `bge-small-en-v1.5` embeddings cached to `data/beir_embeddings/<dataset>/`
+     - BM25 + dense → RRF (top-20) → `bge-reranker-base` → top-10
+     - `pytrec_eval.RelevanceEvaluator` for nDCG@10, Recall@10, MRR
+     - Removed `trust_remote_code=True` (deprecated in newer `datasets` versions)
+     - Output: `eval/results/beir_YYYY-MM-DD.json`
+120. `PYTHONPATH=src:. uv run python scripts/beir_eval.py`
+     → SciFact:  nDCG@10=0.7253, Recall@10=0.8529, MRR=0.6917 (above BM25 baseline ~0.665)
+     → NFCorpus: nDCG@10=0.3311, Recall@10=0.1609, MRR=0.5383 (on-par with baseline; Recall low by design — 38 relevant docs/query)
+     → ArguAna:  nDCG@10=0.2826, Recall@10=0.6166, MRR=0.1793 (below BM25 baseline; counter-argument queries hurt dense similarity)
+     → Embeddings cached to `data/beir_embeddings/`; second run loads from cache
+
+### HotpotQA full run with cost tracking
+121. Create `scripts/hotpotqa_full_eval.py`: multi-hop only (no single-shot baseline), cost tracking per question
+     - Reproducible sample: shuffle 1,000-question gold set with `random.Random(SEED=42)`, take first `--n`
+     - `cost_tracker.reset()` before each question, `cost_tracker.snapshot()` after → logged per record
+     - Per-hop-count breakdown: group EM/F1 by `len(result.hops)` (1, 2, or 3)
+     - Cost summary: avg input/output tokens, avg reranker calls, avg USD/query, total USD, within-budget flag
+     - Output: `eval/results/hotpotqa_full_YYYY-MM-DD.json` + `eval/responses/hotpotqa_full_<ts>.json`
+122. `PYTHONPATH=src:. uv run --env-file .env python scripts/hotpotqa_full_eval.py --n 20` (cost probe)
+     → EM=0.40, F1=0.51, avg hops=2.00, abstained=4/20
+     → Avg cost/query: $0.00060 (12% of $0.005 target ✓), total=$0.013 for 20 questions
+     → Avg input tokens: 4,159.6, avg output tokens: 41.0, avg reranker calls: 43.0
