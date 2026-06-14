@@ -534,7 +534,7 @@ steps_arch = [
         "returns the full answer with citations as regular JSON (no streaming).",
     ),
 ]
-story.append(kv_table([(f"{i+1}. {k}", v) for i, (k, v) in enumerate(steps_arch)]))
+story.append(kv_table([(f"{i + 1}. {k}", v) for i, (k, v) in enumerate(steps_arch)]))
 story.append(sp(8))
 
 # ── 4. The seven files you'll build ───────────────────────────────────────────

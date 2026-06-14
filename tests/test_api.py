@@ -116,7 +116,7 @@ async def test_retrieval_timeout_returns_partial(client: AsyncClient) -> None:
     with patch("rag_engine.api.app._retrieve", _slow):
         r = await client.post("/query", json={"query": "slow"}, headers=AUTH)
     assert r.status_code == 200
-    assert "partial" in r.text
+    assert "generation_unavailable" in r.text
 
 
 # ── LLM timeout ───────────────────────────────────────────────────────────────

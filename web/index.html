@@ -1224,7 +1224,7 @@ async function runLive(q, run) {
         "Content-Type": "application/json",
         ...(CFG.token ? { Authorization: "Bearer " + CFG.token } : {}),
       },
-      body: JSON.stringify({ question: q, top_k: 5 }),
+      body: JSON.stringify({ query: q, top_k: 5 }),
       signal: run.ctl.signal,
     });
   } catch (e) {

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -8,9 +9,10 @@ from typing import Any, cast
 
 import structlog
 from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
-from sse_starlette.sse import EventSourceResponse
+from starlette.responses import StreamingResponse
 
 from rag_engine.api import models, ratelimit
 from rag_engine.api import stream as ev
@@ -54,6 +56,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="RAG Engine API", lifespan=lifespan)
 app.add_middleware(AuthMiddleware)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type"],
+)
 
 
 def _get_redis() -> Redis:
@@ -109,22 +117,35 @@ async def _sse_generator(
 ) -> AsyncIterator[str]:
     query_id = str(uuid.uuid4())
     log = logger.bind(query_id=query_id, tenant_id=tenant_id)
+    t0 = time.monotonic()
 
-    # 1. semantic cache check
+    yield ev.query_id_event(query_id)
+
+    # 1. semantic cache check (embedding happens inside cache.get)
+    t_embed = time.monotonic()
     cached = await cache.get(query)
+    embed_ms = int((time.monotonic() - t_embed) * 1000)
+
     if cached is not None:
+        yield ev.cache_hit_event(hit=True)
+        for i, p in enumerate(cached.citations, 1):
+            yield ev.passage_event(p, i)
         cached.cache_hit = True
         cached.query_id = query_id
         for word in cached.answer.split(" "):
             yield ev.token_event(word + " ")
         await redis.set(f"result:{query_id}", cached.model_dump_json(), ex=3600)
-        yield ev.done_event(query_id)
+        total_ms = int((time.monotonic() - t0) * 1000)
+        yield ev.done_event(query_id, cached=True, total_ms=total_ms)
         log.info("query_served_from_cache")
         return
+
+    yield ev.cache_hit_event(hit=False)
 
     # 2. retrieval with timeout
     passages: list[models.Citation] = []
     timed_out_retrieval = False
+    t_retrieve = time.monotonic()
     try:
         passages = await asyncio.wait_for(
             _retrieve(query, top_k), timeout=_RETRIEVAL_TIMEOUT
@@ -132,9 +153,19 @@ async def _sse_generator(
     except TimeoutError:
         timed_out_retrieval = True
         log.warning("retrieval_timeout")
+    retrieve_ms = int((time.monotonic() - t_retrieve) * 1000)
+
+    yield ev.trace_step_event(
+        "retrieve",
+        "Retrieve passages",
+        f"hybrid · top-{top_k}",
+        retrieve_ms,
+    )
+    for i, p in enumerate(passages, 1):
+        yield ev.passage_event(p, i)
 
     if timed_out_retrieval:
-        yield ev.partial_event(passages)
+        total_ms = int((time.monotonic() - t0) * 1000)
         result = models.QueryResult(
             query_id=query_id,
             answer="",
@@ -143,12 +174,24 @@ async def _sse_generator(
             tenant_id=tenant_id,
         )
         await redis.set(f"result:{query_id}", result.model_dump_json(), ex=3600)
-        yield ev.done_event(query_id)
+        yield ev.done_event(
+            query_id,
+            generation_unavailable=True,
+            lat={
+                "embed": embed_ms,
+                "retrieve": retrieve_ms,
+                "rerank": 0,
+                "generate": 0,
+            },  # noqa: E501
+            total_ms=total_ms,
+        )
         return
 
     # 3. LLM streaming with timeout
+    yield ev.generation_start_event()
     answer_parts: list[str] = []
     timed_out_llm = False
+    t_gen = time.monotonic()
 
     try:
         gen = _build_answer_stream(passages, query)
@@ -168,14 +211,20 @@ async def _sse_generator(
         yield ev.error_event(str(exc))
         return
 
+    gen_ms = int((time.monotonic() - t_gen) * 1000)
+    total_ms = int((time.monotonic() - t0) * 1000)
+    lat = {"embed": embed_ms, "retrieve": retrieve_ms, "rerank": 0, "generate": gen_ms}
+
     if timed_out_llm:
-        yield ev.gen_unavailable_event(passages)
         result = models.QueryResult(
             query_id=query_id,
             answer="",
             citations=passages,
             generation_unavailable=True,
             tenant_id=tenant_id,
+        )
+        yield ev.done_event(
+            query_id, generation_unavailable=True, lat=lat, total_ms=total_ms
         )
     else:
         answer = "".join(answer_parts)
@@ -186,9 +235,9 @@ async def _sse_generator(
             tenant_id=tenant_id,
         )
         await cache.set(query, result)
+        yield ev.done_event(query_id, mode="grounded", lat=lat, total_ms=total_ms)
 
     await redis.set(f"result:{query_id}", result.model_dump_json(), ex=3600)
-    yield ev.done_event(query_id)
     log.info("query_complete", n_passages=len(passages))
 
 
@@ -206,8 +255,10 @@ async def post_query(request: Request, body: models.QueryRequest) -> Response:
         )
 
     cache = _get_cache()
-    return EventSourceResponse(
-        _sse_generator(body.query, body.top_k, tenant_id, cache, redis)
+    return StreamingResponse(
+        _sse_generator(body.query, body.top_k, tenant_id, cache, redis),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
