@@ -1,0 +1,49 @@
+groups:
+  - name: rag_engine
+    interval: 60s
+    rules:
+
+      # P95 end-to-end latency SLO: < 3 s
+      - alert: LatencySLOBreach
+        expr: >
+          histogram_quantile(0.95,
+            sum(rate(rag_stage_latency_seconds_bucket[5m])) by (le)
+          ) > 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "P95 latency above 3 s SLO"
+          description: >
+            P95 end-to-end latency is {{ $value | humanizeDuration }},
+            breaching the 3 s SLO for 5+ minutes.
+
+      # Error ratio SLO: < 5 %
+      - alert: HighErrorRate
+        expr: >
+          sum(rate(rag_query_errors_total[5m]))
+          /
+          sum(rate(rag_queries_total[5m]))
+          > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Query error rate above 5 %"
+          description: >
+            Error rate is {{ $value | humanizePercentage }} over the last 5 min.
+
+      # Eval drift: faithfulness dropped > 2 pts below 7-day rolling average
+      - alert: FaithfulnessDrift
+        expr: >
+          rag_eval_faithfulness
+          < (avg_over_time(rag_eval_faithfulness[7d]) - 0.02)
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Faithfulness score drifted below baseline"
+          description: >
+            Current faithfulness {{ $value | humanizePercentage }}
+            is more than 2 pts below the 7-day average.
+            Check recent index updates or prompt changes.

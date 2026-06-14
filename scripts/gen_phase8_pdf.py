@@ -1,6 +1,6 @@
 """Generate Phase 8 explainer PDF."""
 
-import os
+from pathlib import Path
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
@@ -133,7 +133,15 @@ def body(text):
 
 
 def code(text):
-    return Paragraph(text.replace("\n", "<br/>").replace(" ", "&nbsp;"), sCode)
+    escaped = (
+        text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\n", "<br/>")
+        .replace("  ", "&nbsp;&nbsp;")
+        .replace("\t", "&nbsp;&nbsp;&nbsp;&nbsp;")
+    )
+    return Paragraph(escaped, sCode)
 
 
 def h1(text):
@@ -188,7 +196,7 @@ def kv_table(rows):
 
 
 def files_table(rows):
-    """Three-column file list."""
+    """Two-column file list."""
     header = [Paragraph(h, sLabel) for h in ["File", "What it does"]]
     data = [header] + [
         [
@@ -222,7 +230,7 @@ def files_table(rows):
 
 
 def metrics_table(rows):
-    header = [Paragraph(h, sLabel) for h in ["Metric", "Target"]]
+    header = [Paragraph(h, sLabel) for h in ["Metric", "Value"]]
     data = [header] + [
         [Paragraph(m, sLabelVal), Paragraph(v, sLabelVal)] for m, v in rows
     ]
@@ -257,7 +265,8 @@ def cover_page():
             [sp(4)],
             [
                 Paragraph(
-                    "Streaming API · Auth · Semantic Caching · Rate Limiting · Timeouts",
+                    "Streaming API · Auth · Semantic Caching · Rate Limiting"
+                    " · Hybrid Retrieval · Multi-hop Agent",
                     sSubtitle,
                 )
             ],
@@ -287,10 +296,11 @@ story += [cover_page(), sp(20)]
 
 story += [
     body(
-        "By the end of Phase 8 the RAG pipeline you built across Phases 0–7 is served "
-        "as a real API. Users get streaming token-by-token responses, similar queries hit "
-        "a cache instead of the LLM, each tenant has its own rate limit, and the system "
-        "degrades gracefully instead of crashing when something is slow."
+        "Phase 8 turns the RAG pipeline built across Phases 0-7 into a real production "
+        "API. Users get streaming token-by-token responses, similar queries hit a semantic "
+        "cache, each tenant has its own rate limit, retrieval runs as a full hybrid pipeline "
+        "(HNSW + BM25 + RRF + cross-encoder reranking), and a multi-hop agent loop can "
+        "chain two retrieval passes to answer bridge questions."
     ),
     sp(4),
 ]
@@ -299,194 +309,239 @@ story += [
 story += [h1("1. What Problem Does Phase 8 Solve?"), hr()]
 story += [
     body(
-        "Phases 0–7 gave you a pipeline that works — but it only works when you call it "
-        "directly in Python. Phase 8 turns it into something anyone can call over HTTP."
+        "Phases 0-7 gave you a pipeline that works — but only when called directly in Python. "
+        "Phase 8 exposes it over HTTP and wires the frontend to the real backend."
     ),
-    body("Three real problems come up the moment you expose a pipeline as an API:"),
+    body("Four real problems come up the moment you do that:"),
     bullets(
         [
-            "<b>Speed perception.</b> An LLM takes 2–5 seconds to generate an answer. "
-            "If you buffer the entire response and send it at the end, the user stares at a "
-            "blank screen. If you stream tokens as they're generated — like ChatGPT does — "
-            "the experience feels instant.",
-            "<b>Cost.</b> Every LLM call costs money. If you get 100 queries about "
-            '"What is the capital of France?" you should pay for one LLM call, not 100. '
-            "A semantic cache answers repeated (or similar) questions for free.",
-            "<b>Fairness and safety.</b> Without rate limiting, one tenant can flood "
-            "your server and degrade service for everyone else. Without auth, anyone can "
-            "call your API and run up your bill.",
+            "<b>Speed perception.</b> An LLM takes 2-5 seconds to generate an answer. "
+            "Streaming tokens as they arrive (like ChatGPT) makes the experience feel instant "
+            "even though the full response takes 3 seconds.",
+            "<b>Cost.</b> Every LLM call costs money. A semantic cache short-circuits repeated "
+            "or paraphrased questions — the second ask is answered in ~22 ms for free.",
+            "<b>Fairness and safety.</b> Without rate limiting one tenant can flood the server. "
+            "Without auth anyone can run up your bill.",
+            "<b>Multi-hop questions.</b> Single-shot retrieval fails on bridge questions "
+            "(e.g. 'capital of the country where Eiffel Tower stands'). "
+            "A two-hop agent loop extracts the bridge entity and runs a second retrieval.",
         ]
     ),
     sp(4),
 ]
 
-# ── 2. The five features ───────────────────────────────────────────────────────
-story += [h1("2. The Five Features — Plain English"), hr()]
-
-# SSE
-story += [h2("Feature 1 — Streaming (Server-Sent Events)")]
+# ── 2. The wire protocol ───────────────────────────────────────────────────────
+story += [h1("2. Wire Protocol — Server-Sent Events"), hr()]
 story += [
     body(
-        "Normally an HTTP request works like ordering takeout: you place the order, "
-        "wait, and receive everything at once. Streaming works like watching a chef cook "
-        "in front of you — you see progress as it happens."
+        "The frontend and backend communicate over a single HTTP connection using "
+        "<b>Server-Sent Events (SSE)</b>. The key requirement is the named-event format: "
+        "each message must have an <font name='Courier'>event:</font> line so the browser "
+        "can dispatch it to the right handler."
     ),
-    body(
-        "<b>Server-Sent Events (SSE)</b> keep the HTTP connection open and let the "
-        "server push small chunks of text down the wire as they become available. "
-        "Each chunk looks like this:"
-    ),
+    body("Every SSE frame looks like this:"),
     code(
-        'data: {"type": "token", "text": "The"}\n\n'
-        'data: {"type": "token", "text": " director"}\n\n'
-        'data: {"type": "token", "text": " of"}\n\n'
-        'data: {"type": "done",  "query_id": "abc-123"}\n\n'
+        "event: token\n"
+        'data: {"text": "The"}\n'
+        "\n"
+        "event: token\n"
+        'data: {"text": " capital"}\n'
+        "\n"
+        "event: done\n"
+        'data: {"query_id": "abc-123", "mode": "grounded", "total_ms": 1875}\n'
+        "\n"
     ),
     body(
-        "The browser (or curl) reads each chunk as it arrives and shows it to the user. "
-        "This means the user sees the first word in under 300 ms even though the full "
-        "response takes 3 seconds."
-    ),
-    body(
-        "<b>In Phase 8:</b> retrieval and reranking finish first (they're fast — under "
-        "200 ms). Only then does the SSE stream open and the LLM start generating. "
-        "This way the user never sees a half-retrieved answer."
-    ),
-    sp(6),
-]
-
-# Auth
-story += [h2("Feature 2 — Auth (Bearer Tokens + Tenant IDs)")]
-story += [
-    body(
-        "A <b>bearer token</b> is just a secret string — like an API key — that you "
-        "include in every request. The server checks the token against a lookup table "
-        "and finds out which tenant (customer / user) sent the request."
-    ),
-    body("Every request includes a header like:"),
-    code("Authorization: Bearer sk-acme-corp-abc123"),
-    body(
-        "The server maps <font name='Courier'>sk-acme-corp-abc123</font> → "
-        "<font name='Courier'>acme-corp</font>. That tenant ID is attached to every "
-        "log line for that request — so at the end of the month you know exactly how "
-        "many LLM tokens each tenant consumed. Unknown or missing token → 401 Unauthorized."
-    ),
-    body(
-        "<b>Middleware</b> means this check runs automatically on every request, before "
-        "it even reaches your endpoint code. You write it once and forget it."
-    ),
-    sp(6),
-]
-
-# Semantic cache
-story += [h2("Feature 3 — Semantic Caching")]
-story += [
-    body(
-        "A normal cache uses exact string matching as the key. For natural language "
-        "queries this almost never works:"
-    ),
-    bullets(
-        [
-            '"What caused the 2008 financial crisis?" — cache miss',
-            '"What were the causes of the 2008 financial crisis?" — also a miss',
-            '"Why did the 2008 financial crisis happen?" — also a miss',
-        ]
-    ),
-    body(
-        "These are the same question. A <b>semantic cache</b> fixes this by using "
-        "the query's embedding (the 384-dimensional vector your pipeline already "
-        "computes) as the key, and measuring similarity instead of equality."
-    ),
-    body("How it works step by step:"),
-    bullets(
-        [
-            "New query arrives → embed it (same model used for retrieval)",
-            "Scan previously-cached query embeddings for cosine similarity > 0.97",
-            "Above threshold → same question, different words → return the stored answer "
-            "without calling the LLM",
-            "Below threshold → cache miss → run full retrieval + LLM → store result",
-        ]
-    ),
-    body(
-        "<b>Why 0.97?</b> Cosine similarity of 1.0 = identical vectors. At 0.97 you "
-        "catch paraphrases and rewordings but not genuinely different questions. "
-        "Lower the threshold and you risk returning wrong cached answers."
-    ),
-    body(
-        "<b>Target:</b> ≥ 20% hit rate, which eliminates 20% of LLM calls entirely "
-        "— and those 20% become nearly instant responses."
-    ),
-    sp(6),
-]
-
-# Rate limiting
-story += [h2("Feature 4 — Rate Limiting (Redis Lua Token Bucket)")]
-story += [
-    body(
-        "Rate limiting means: each tenant gets N requests per minute. Exceed that → "
-        "HTTP 429 Too Many Requests with a Retry-After header telling them when to try again."
-    ),
-    body("<b>Why a Lua script?</b> The naive implementation has a race condition:"),
-    bullets(
-        [
-            "Request A reads count from Redis → sees 99 (under the limit of 100)",
-            "Request B reads count from Redis → also sees 99",
-            "Both proceed → now you've allowed 101 requests",
-        ]
-    ),
-    body(
-        "A <b>Lua script</b> runs atomically on the Redis server — it's a single "
-        "indivisible operation. No other command can run between the read and the "
-        "decrement. The race is impossible."
-    ),
-    body("The Lua script is short — here's the core logic:"),
-    code(
-        "local count = redis.call('GET', KEYS[1]) or 0\n"
-        "if tonumber(count) < tonumber(ARGV[1]) then\n"
-        "    redis.call('INCR', KEYS[1])\n"
-        "    redis.call('EXPIRE', KEYS[1], ARGV[2])\n"
-        "    return 1   -- allowed\n"
-        "end\n"
-        "return 0       -- rejected"
-    ),
-    body(
-        "KEYS[1] is the per-tenant Redis key (e.g. ratelimit:acme-corp). "
-        "ARGV[1] is the cap (100). ARGV[2] is the window in seconds (60). "
-        "Returns 1 = allowed, 0 = rejected."
-    ),
-    sp(6),
-]
-
-# Timeouts
-story += [h2("Feature 5 — Timeouts and Graceful Degradation")]
-story += [
-    body(
-        "Two things can be slow: retrieval (usually fast, but can spike) "
-        "and the LLM (usually slow). Without explicit timeouts, a slow upstream "
-        "hangs your server indefinitely."
-    ),
-    body("The rules:"),
-    bullets(
-        [
-            "<b>Retrieval timeout: 200 ms.</b> If HNSW search + reranking takes longer "
-            "than 200 ms, stop waiting and return whatever passages were retrieved so far "
-            "with a partial=True flag. The user gets partial results rather than nothing.",
-            "<b>LLM timeout: 5 seconds.</b> If the LLM hasn't finished in 5 seconds, "
-            "stop the stream and return the retrieved passages with a "
-            "generation_unavailable=True flag. The user still gets relevant documents — "
-            "they just don't get the generated answer.",
-        ]
-    ),
-    body(
-        "This is called <b>graceful degradation</b>: the system returns something "
-        "useful at every failure level instead of crashing with a 500 error. "
-        "In Python this uses asyncio.wait_for() with a timeout argument."
+        "Without the <font name='Courier'>event:</font> line the browser's EventSource "
+        "receives every message as an unnamed 'message' event — the frontend can't "
+        "distinguish a token from a done signal. This was the critical fix when wiring "
+        "the backend to the frontend: switching from <font name='Courier'>sse_starlette</font>'s "
+        "EventSourceResponse (which double-wraps) to a plain "
+        "<font name='Courier'>StreamingResponse</font> with "
+        "<font name='Courier'>media_type='text/event-stream'</font> that passes "
+        "pre-formatted strings through as-is."
     ),
     sp(4),
 ]
 
-# ── 3. Architecture ────────────────────────────────────────────────────────────
-story += [PageBreak(), h1("3. Architecture — Request Flow"), hr()]
+story += [h2("Full Event Sequence")]
+story += [
+    body("For a non-cached query, the backend emits these events in order:"),
+    sp(4),
+]
+story.append(
+    kv_table(
+        [
+            (
+                "query_id",
+                '{"id": "uuid4"} — emitted first so the frontend can poll GET /query/{id}',
+            ),
+            (
+                "cache_hit",
+                '{"hit": false} — or true with cached answer following immediately',
+            ),
+            (
+                "trace_step",
+                '{"step": "embed", "label": "Embed query", "ms": 16} — one per pipeline stage',
+            ),
+            (
+                "trace_step",
+                '{"step": "retrieve", "label": "Hop 1 — retrieve", "ms": 370}',
+            ),
+            (
+                "passage",
+                '{"num": 1, "title": "...", "dense": 0.99, "bm25": 0.82, "rerank": 0.97, "hop": 1}',
+            ),
+            (
+                "trace_step",
+                '{"step": "hop1", "label": "Bridge → Gustave Eiffel", "reflect": true}',
+            ),
+            ("trace_step", '{"step": "hop2", "label": "Hop 2 — retrieve", "ms": 290}'),
+            (
+                "passage",
+                '{"num": 6, "title": "...", "hop": 2} — additional passages from hop 2',
+            ),
+            ("generation_start", "{} — signals LLM is about to stream"),
+            ("token", '{"text": "The"} — one per LLM token'),
+            (
+                "trace_step",
+                '{"step": "generate", "label": "Generate answer", "ms": 2919}',
+            ),
+            (
+                "done",
+                '{"mode": "grounded", "lat": {"embed":16,"retrieve":370,...}, "total_ms": 3308}',
+            ),
+        ]
+    )
+)
+story.append(sp(8))
+
+# ── 3. Hybrid Retrieval Pipeline ───────────────────────────────────────────────
+story += [PageBreak(), h1("3. Hybrid Retrieval Pipeline"), hr()]
+story += [
+    body(
+        "Retrieval runs two independent searches in parallel, then fuses and reranks:"
+    ),
+    sp(4),
+]
+story.append(
+    kv_table(
+        [
+            (
+                "HNSW dense search",
+                "Encodes the query with bge-small-en-v1.5, searches 1,000 nearest neighbours "
+                "in the FAISS HNSW index (15.9 GB, 8.8M chunks). Returns up to 100 unique "
+                "article titles by cosine similarity.",
+            ),
+            (
+                "BM25 sparse search",
+                "Runs the query through the bm25s index. Returns up to 100 titles ranked by "
+                "TF-IDF term overlap. Runs in parallel with HNSW via ThreadPoolExecutor.",
+            ),
+            (
+                "Reciprocal Rank Fusion",
+                "Merges the two ranked lists with RRF (k=60). Score = sum(1/(60+rank+1)) "
+                "across all lists. Top 10 candidates pass to the reranker.",
+            ),
+            (
+                "Cross-encoder rerank",
+                "bge-reranker-base scores each (query, passage) pair with BERT-style "
+                "attention. Final order is by cross-encoder score, not embedding similarity.",
+            ),
+        ]
+    )
+)
+story.append(sp(8))
+
+story += [h2("Score Breakdown in the UI")]
+story += [
+    body("Each retrieved passage shows three scores. All are on a 0-1 scale:"),
+    bullets(
+        [
+            "<b>DENSE</b> — raw cosine similarity from HNSW search "
+            "(captured from faiss.search() distances). High = semantically close to the query.",
+            "<b>BM25</b> — normalized RRF rank contribution from the sparse list. "
+            "Rank 0 = 1.0, rank 99 = ~0.38, not retrieved = 0.0. "
+            "A passage with BM25=0 was found only by dense search.",
+            "<b>RERANK</b> — cross-encoder score. This is what determines final order. "
+            "A passage can have low DENSE but high RERANK if the cross-encoder finds it "
+            "highly relevant in context.",
+        ]
+    ),
+    body("The Citation model carries all three:"),
+    code(
+        "class Citation(BaseModel):\n"
+        "    passage_id: str\n"
+        "    title: str\n"
+        "    text: str\n"
+        "    score: float        # cross-encoder rerank score\n"
+        "    dense_score: float  # HNSW cosine similarity\n"
+        "    bm25_score: float   # normalized RRF BM25 contribution\n"
+    ),
+    sp(6),
+]
+
+# ── 4. Multi-hop Agent Loop ────────────────────────────────────────────────────
+story += [h1("4. Multi-hop Agent Loop"), hr()]
+story += [
+    body(
+        "Single-shot retrieval fails on bridge questions — questions where the answer "
+        "to step 1 is required as input to step 2. Example:"
+    ),
+    bullets(
+        [
+            "Q: 'What is the birth city of the engineer who designed the tower on the Champ de Mars?'",
+            "Step 1: retrieve 'Champ de Mars' → top passage: Eiffel Tower → mentions Gustave Eiffel",
+            "Step 2: retrieve 'Gustave Eiffel' → passage mentions born in Dijon",
+            "Without step 2, the LLM hallucinates from whatever civil engineers happen to be in the top-5",
+        ]
+    ),
+    sp(4),
+]
+
+story += [h2("Bridge Extraction")]
+story += [
+    body(
+        "After hop 1, a fast LLM call extracts the bridge entity from the top-ranked passage:"
+    ),
+    code(
+        "Question: {original_query}\n"
+        "Passage title: {top_title}\n"
+        "Passage excerpt: {top_text[:400]}\n\n"
+        "What single entity or concept must be looked up next to answer the question?\n"
+        "Reply with ONLY the search term, or NONE if the passage already answers it."
+    ),
+    body(
+        "The bridge is emitted as a <font name='Courier'>trace_step</font> event with "
+        "<font name='Courier'>reflect=true</font> (shown with a ↺ icon in the agent trace). "
+        "A second retrieval runs with the bridge as the query. "
+        "New passages (not already in hop 1 results) are emitted with "
+        "<font name='Courier'>hop=2</font> and get a 'HOP 2' badge in the UI."
+    ),
+    sp(4),
+]
+
+story += [h2("Merged Reranking")]
+story += [
+    body(
+        "After both hops, all passages are merged and re-scored against the "
+        "<b>original query</b> using the cross-encoder. This ensures the final "
+        "passage order is relevant to the original intent, not the bridge query. "
+        "The LLM generates its answer from the merged, re-ranked set."
+    ),
+    body("The agent trace in the UI shows all steps in real time:"),
+    code(
+        "✓  Embed query          bge-small-en-v1.5 · 16 ms\n"
+        "✓  Hop 1 — retrieve     hybrid · top-5    · 370 ms\n"
+        '↺  Bridge → Gustave Eiffel   from "Eiffel Tower"\n'
+        "✓  Hop 2 — retrieve     query: Gustave Eiffel · 290 ms\n"
+        "✓  Generate answer      gpt-4o-mini       · 2400 ms\n"
+    ),
+    sp(6),
+]
+
+# ── 5. Architecture ────────────────────────────────────────────────────────────
+story += [PageBreak(), h1("5. Architecture — Request Flow"), hr()]
 story += [
     body("Here is what happens for every POST /query request, in order:"),
     sp(4),
@@ -495,13 +550,13 @@ story += [
 steps_arch = [
     (
         "Auth middleware",
-        "Runs before your endpoint. Reads Authorization header → resolves tenant_id → "
-        "binds to log context. Returns 401 if missing or unknown.",
+        "Reads Authorization header → resolves tenant_id → binds to log context. "
+        "Returns 401 if missing or unknown.",
     ),
     (
         "Rate limit check",
         "Calls the Lua script with the tenant's Redis key. If over limit → return 429 "
-        "with Retry-After header. Otherwise continue.",
+        "with Retry-After header.",
     ),
     (
         "Semantic cache lookup",
@@ -509,328 +564,253 @@ steps_arch = [
         "the cached answer as SSE tokens. Done — no retrieval, no LLM call.",
     ),
     (
-        "Retrieval (with 200ms timeout)",
-        "Run BM25 + HNSW dense retrieval → RRF fusion → cross-encoder rerank. "
-        "If this takes > 200ms, return partial SSE event with whatever was retrieved.",
+        "Hop 1 retrieval (30s timeout)",
+        "HNSW + BM25 in parallel → RRF fusion → cross-encoder rerank. "
+        "Emit trace_step and passage events.",
     ),
     (
-        "Open SSE stream",
-        "All retrieval is done before the stream opens. "
-        "Now yield tokens as the LLM generates them.",
+        "Bridge extraction (8s timeout)",
+        "LLM call extracts bridge entity from top passage. "
+        "Emit reflect trace_step. Only runs when max_hops > 1.",
     ),
     (
-        "LLM generation (with 5s timeout)",
-        "Stream tokens via the OpenAI streaming API. "
-        "If LLM takes > 5s → emit generation_unavailable event with passages.",
+        "Hop 2 retrieval (30s timeout)",
+        "Retrieve with bridge entity → merge with hop-1 results → rerank merged set "
+        "against original query. Emit hop-2 passage events.",
+    ),
+    (
+        "LLM generation (5s per-token timeout)",
+        "Stream tokens via OpenAI streaming API. Emit token events. "
+        "If LLM takes > 5s → emit generation_unavailable in done event.",
     ),
     (
         "Store result",
-        "Write the full result (answer + citations) to Redis keyed by query_id. "
-        "Also write to the semantic cache for future hits. Emit done event.",
+        "Write full result (answer + citations) to Redis keyed by query_id. "
+        "Also store in semantic cache. Emit done event.",
     ),
     (
         "GET /query/{id}",
-        "Separate endpoint. Fetches the stored result from Redis by query_id — "
-        "returns the full answer with citations as regular JSON (no streaming).",
+        "Separate endpoint. Fetches stored result from Redis — returns full answer "
+        "with citations as regular JSON (no streaming).",
     ),
 ]
 story.append(kv_table([(f"{i + 1}. {k}", v) for i, (k, v) in enumerate(steps_arch)]))
 story.append(sp(8))
 
-# ── 4. The seven files you'll build ───────────────────────────────────────────
-story += [h1("4. Files You'll Build"), hr()]
+# ── 6. Files ───────────────────────────────────────────────────────────────────
+story += [h1("6. Files"), hr()]
 story += [
-    body(
-        "Phase 8 adds a new package — src/rag_engine/api/ — plus tests, an infra "
-        "file, and a startup script. Each file has one job."
-    ),
+    body("All API code lives under src/rag_engine/api/. Each file has one job."),
     sp(4),
 ]
 story.append(
     files_table(
         [
             (
-                "src/rag_engine/api/__init__.py",
-                "Package root — makes api/ importable as rag_engine.api",
-            ),
-            (
                 "src/rag_engine/api/models.py",
-                "Pydantic data shapes: QueryRequest (what comes in), Citation (a source passage), "
-                "QueryResult (full response including cache_hit, partial, generation_unavailable flags)",
+                "Pydantic shapes: QueryRequest (query, top_k, max_hops), "
+                "Citation (passage_id, title, text, score, dense_score, bm25_score), "
+                "QueryResult (answer, citations, cache_hit, generation_unavailable flags)",
             ),
             (
                 "src/rag_engine/api/auth.py",
-                "Middleware: reads Authorization header → resolves tenant_id → binds to log "
-                "context → 401 on unknown token",
+                "Middleware: reads Authorization: Bearer <token> → resolves tenant_id "
+                "→ binds to log context → 401 on unknown token",
             ),
             (
                 "src/rag_engine/api/ratelimit.py",
-                "Async function wrapping the Lua script: check_and_decrement(redis, tenant_id) → "
-                "bool. Returns False when over limit.",
+                "Async function wrapping an atomic Redis Lua script: "
+                "check(redis, tenant_id) → bool. Returns False when over limit.",
             ),
             (
                 "src/rag_engine/api/stream.py",
-                "Pure functions that format SSE data: lines — token_event, done_event, "
-                "partial_event, gen_unavailable_event, error_event",
+                "Pure functions that emit properly-formatted SSE frames: "
+                "query_id_event, cache_hit_event, trace_step_event, passage_event (with optional hop=), "
+                "generation_start_event, token_event, done_event, error_event. "
+                "All use event: <name>\\ndata: {json}\\n\\n format.",
             ),
             (
                 "src/rag_engine/api/cache.py",
-                "SemanticCache class: get(query) → QueryResult | None, "
-                "set(query, result) → None. Maintains hit/total counters in Redis.",
+                "SemanticCache: get(query) → QueryResult | None, set(query, result). "
+                "Embeds query, scans stored embeddings for cosine sim > 0.97, "
+                "maintains hit/total counters in Redis.",
             ),
             (
                 "src/rag_engine/api/app.py",
-                "The FastAPI app. Wires together all of the above. "
-                "POST /query (SSE), GET /query/{id}, /health, /ready, /metrics/cache",
+                "FastAPI app. Lifespan loads HNSW index, BM25, cross-encoder, DB mappings. "
+                "_retrieve_sync runs HNSW+BM25 in parallel threads, fuses with RRF, reranks. "
+                "_extract_bridge calls LLM to get hop-2 query. "
+                "_rerank_sync re-scores merged passage lists. "
+                "_sse_generator orchestrates the full multi-hop pipeline and yields SSE frames.",
             ),
             (
                 "scripts/run_server.py",
-                "One-liner: starts uvicorn on port 8000, reads RAG_PORT / RAG_WORKERS from env",
+                "Starts uvicorn. Sets OMP_NUM_THREADS=1 and TOKENIZERS_PARALLELISM=false "
+                "to prevent OpenMP deadlock on Apple Silicon when PyTorch runs in multiple threads.",
             ),
             (
                 "tests/test_api.py",
                 "Pytest tests with mocked Redis and mocked retrieval. "
-                "Tests every failure path: 401, 429, cache hit, retrieval timeout, LLM timeout",
+                "Covers: 401 missing/invalid token, 429 rate limit, cache hit SSE, "
+                "retrieval timeout → generation_unavailable, LLM timeout → generation_unavailable, "
+                "GET /query/{id} found and 404, /health, /ready, /metrics/cache.",
             ),
             (
-                "infra/redis.yml",
-                "Docker Compose file — starts a local Redis container in one command",
+                "web/index.html",
+                "Single-file frontend. Connects to backend SSE stream, renders agent trace "
+                "(embed → hop1 → bridge → hop2 → generate), passage cards with "
+                "dense/BM25/rerank score bars, latency budget waterfall, wire protocol log.",
             ),
         ]
     )
 )
 story.append(sp(8))
 
-# ── 5. Key concepts explained ─────────────────────────────────────────────────
-story += [PageBreak(), h1("5. Key Concepts Explained"), hr()]
+# ── 7. Key concepts ────────────────────────────────────────────────────────────
+story += [PageBreak(), h1("7. Key Concepts"), hr()]
 
-story += [h2("What is Redis?")]
+story += [h2("StreamingResponse vs EventSourceResponse")]
 story += [
     body(
-        "Redis is an in-memory key-value store — think of it as a Python dict that "
-        "lives in its own process. You can set a key to expire after N seconds, "
-        "atomically increment counters, and run Lua scripts server-side. "
-        "It's used here for three things: the semantic cache, rate limit counters, "
-        "and storing query results for GET /query/{id}."
+        "<font name='Courier'>sse_starlette</font>'s EventSourceResponse prepends "
+        "<font name='Courier'>data:</font> to every yielded string. If your generator "
+        "already yields formatted SSE frames, you get double-wrapping: "
+        "<font name='Courier'>data: event: token\\ndata: data: {...}</font>. "
+        "The fix: use Starlette's plain "
+        "<font name='Courier'>StreamingResponse(generator, media_type='text/event-stream')</font> "
+        "and yield complete, correctly-formatted SSE strings."
     ),
     sp(6),
 ]
 
-story += [h2("What is FastAPI?")]
+story += [h2("asyncio.to_thread for CPU-bound work")]
 story += [
     body(
-        "FastAPI is a Python web framework. You define functions decorated with "
-        "@app.post('/query') and FastAPI handles routing, input validation (via "
-        "Pydantic), and auto-generated API docs at /docs. It's async-native — "
-        "all your endpoint functions can be async def, which matters for streaming."
+        "FAISS search, BM25 retrieval, and cross-encoder inference are all CPU-bound. "
+        "Running them in the async event loop would block all other requests. "
+        "<font name='Courier'>asyncio.to_thread(fn, *args)</font> runs them in a "
+        "thread-pool executor so the event loop stays free, and "
+        "<font name='Courier'>asyncio.wait_for()</font> can still fire a timeout."
     ),
     sp(6),
 ]
 
-story += [h2("What is a Pydantic Model?")]
+story += [h2("OMP_NUM_THREADS=1 on Apple Silicon")]
 story += [
     body(
-        "A Pydantic model is a Python class that describes the shape of data and "
-        "validates it automatically. You've already used one in config.py. "
-        "In the API layer you define what a request looks like (QueryRequest) and "
-        "what a response looks like (QueryResult). FastAPI uses these to validate "
-        "incoming JSON and serialize outgoing JSON."
+        "PyTorch ships its own OpenMP runtime (libomp.dylib). When two threads call "
+        "PyTorch simultaneously — e.g. the cache embedding on the main thread and "
+        "retrieval embedding in a worker thread — their OMP runtimes deadlock with a SIGSEGV. "
+        "Setting OMP_NUM_THREADS=1 and TOKENIZERS_PARALLELISM=false before importing "
+        "torch (in run_server.py) prevents this."
+    ),
+    sp(6),
+]
+
+story += [h2("Reciprocal Rank Fusion")]
+story += [
+    body(
+        "RRF combines two ranked lists without needing to normalize their scores. "
+        "For each document, add 1/(k + rank + 1) across all lists that contain it "
+        "(k=60 dampens the effect of very high ranks). Documents appearing in both "
+        "lists get a double contribution; documents in only one list get a single contribution. "
+        "Sort by total score descending."
     ),
     code(
-        "class QueryRequest(BaseModel):\n"
-        "    query: str\n"
-        "    max_hops: int = 2\n"
-        "    top_k: int = 5\n\n"
-        "class Citation(BaseModel):\n"
-        "    passage_id: str\n"
-        "    title: str\n"
-        "    text: str\n"
-        "    score: float"
+        "def reciprocal_rank_fusion(ranked_lists, k=60, top_k=10):\n"
+        "    scores = defaultdict(float)\n"
+        "    for ranked in ranked_lists:\n"
+        "        for rank, doc_id in enumerate(ranked):\n"
+        "            scores[doc_id] += 1.0 / (k + rank + 1)\n"
+        "    return sorted(scores, key=lambda d: scores[d], reverse=True)[:top_k]\n"
     ),
     sp(6),
 ]
 
-story += [h2("What is Middleware?")]
+story += [h2("CORS Middleware")]
 story += [
     body(
-        "Middleware is code that wraps every request/response cycle. Think of it as "
-        "a layer around your endpoint functions. Auth middleware runs before any "
-        "endpoint is called — if it rejects the request (wrong token), the endpoint "
-        "never runs. You write one middleware class and it applies everywhere "
-        "automatically — no need to add auth checks inside each endpoint."
-    ),
-    sp(6),
-]
-
-story += [h2("What is asyncio.wait_for()?")]
-story += [
-    body(
-        "In async Python, asyncio.wait_for(coroutine, timeout=N) runs a coroutine "
-        "but cancels it after N seconds if it hasn't finished. It raises "
-        "asyncio.TimeoutError which you catch and handle — in Phase 8 that means "
-        "returning a partial or degraded response instead of hanging forever."
-    ),
-    code(
-        "try:\n"
-        "    passages = await asyncio.wait_for(\n"
-        "        retrieve_and_rerank(query), timeout=0.2\n"
-        "    )\n"
-        "except asyncio.TimeoutError:\n"
-        "    yield partial_event([])  # return what we have\n"
-        "    return"
-    ),
-    sp(6),
-]
-
-story += [h2("What is cosine similarity?")]
-story += [
-    body(
-        "You already use this for retrieval — it's the dot product of two normalized "
-        "vectors. Two identical sentences have cosine similarity 1.0. "
-        "Two completely unrelated sentences might be 0.2–0.4. "
-        "Paraphrases of the same question tend to land at 0.95–0.99. "
-        "The cache uses 0.97 as the threshold — above that, treat as the same question."
+        "The frontend is served on localhost:3000 and the backend on localhost:8000 — "
+        "different origins. Browsers block cross-origin requests by default. "
+        "Adding CORSMiddleware to FastAPI adds the necessary "
+        "<font name='Courier'>Access-Control-Allow-Origin: *</font> header "
+        "to every response."
     ),
     sp(4),
 ]
 
-# ── 6. Build order ────────────────────────────────────────────────────────────
-story += [PageBreak(), h1("6. Build Order and Why It Matters"), hr()]
-story += [
-    body(
-        "Each piece depends on the ones before it. Build in this order so you can "
-        "test each step in isolation before wiring them together."
-    ),
-    sp(6),
-]
-build_order = [
-    (
-        "1. Infra + deps",
-        "Start Redis locally. Install libraries. Nothing else works without Redis running.",
-    ),
-    (
-        "2. Pydantic models",
-        "Define QueryRequest, Citation, QueryResult first. Everything else imports these "
-        "shapes. No logic here — just data contracts.",
-    ),
-    (
-        "3. SSE helpers",
-        "Pure functions that format SSE strings. Test them with a simple print — "
-        "no server needed. Ensures the streaming format is correct before wiring to FastAPI.",
-    ),
-    (
-        "4. Auth middleware",
-        "One class, one job. Test it standalone by passing fake headers. "
-        "Once tested, mount on the app and forget it.",
-    ),
-    (
-        "5. Rate limiter",
-        "One async function wrapping the Lua script. Test with a real local Redis. "
-        "Confirm the atomic guarantee: flood 200 concurrent calls, count should "
-        "never exceed cap.",
-    ),
-    (
-        "6. Semantic cache",
-        "SemanticCache class. Test get() and set() with a real local Redis and a "
-        "small embedder. Confirm cosine threshold works.",
-    ),
-    (
-        "7. LLM streaming",
-        "Add stream_complete() to llm.py. Test it standalone — just print tokens "
-        "as they arrive. Confirm the generator works before plugging into the endpoint.",
-    ),
-    (
-        "8. FastAPI app",
-        "Wire everything together. The app's lifespan loads the HNSW index, embedder, "
-        "reranker, and Redis client once at startup — not per request.",
-    ),
-    (
-        "9. Tests",
-        "Mock Redis and retrieval. Test each failure path (401, 429, timeout, "
-        "cache hit) without needing a real index or LLM.",
-    ),
-    (
-        "10. Smoke test",
-        "Run the real server. curl the endpoint. Repeat a query and confirm "
-        "the cache hit in logs. Flood one tenant and confirm the other is unaffected.",
-    ),
-]
-story.append(kv_table(build_order))
-story.append(sp(8))
-
-# ── 7. Target metrics ─────────────────────────────────────────────────────────
-story += [h1("7. Target Metrics"), hr()]
+# ── 8. Target metrics ─────────────────────────────────────────────────────────
+story += [h1("8. Observed Metrics"), hr()]
 story.append(
     metrics_table(
         [
-            ("End-to-end P95 latency", "< 800 ms"),
-            ("Time to first token (after retrieval)", "< 300 ms"),
-            ("Semantic cache hit rate", "≥ 20%"),
-            ("Cost per query (cache miss path)", "≤ $0.005"),
-            ("Retrieval timeout", "200 ms — return partial results"),
-            ("LLM timeout", "5 s — return passages + generation_unavailable flag"),
-            ("Rate limit precision", "Atomic — no 2× burst possible"),
+            ("P95 latency budget (full pipeline)", "3000 ms"),
+            ("Embed step", "~16 ms (bge-small-en-v1.5 on CPU)"),
+            ("Retrieval (HNSW + BM25 parallel + rerank)", "305-460 ms"),
+            ("HNSW ANNS recall@10", "98.6% (ef=64)"),
+            ("HNSW search P50", "0.387 ms (index lookup only)"),
+            ("LLM generation", "1400-3000 ms (gpt-4o-mini streaming)"),
+            ("Semantic cache hit latency", "~22 ms (embed only, no retrieval/LLM)"),
+            ("Retrieval timeout", "30 s"),
+            ("LLM per-token timeout", "5 s"),
         ]
     )
 )
 story.append(sp(8))
 
-# ── 8. Common mistakes ────────────────────────────────────────────────────────
-story += [h1("8. Common Mistakes to Avoid"), hr()]
+# ── 9. Common mistakes ────────────────────────────────────────────────────────
+story += [h1("9. Common Mistakes"), hr()]
 story.append(
     bullets(
         [
-            "<b>Opening the SSE stream before retrieval finishes.</b> If you stream "
-            "while retrieval is still running, you can't add citations to the stream "
-            "because you don't know them yet. Finish retrieval first, then open the stream.",
-            "<b>Using SETNX (set-if-not-exists) for rate limiting.</b> This has a "
-            "race — two requests can both see the key missing and both set it. "
-            "Use the Lua script.",
-            "<b>Using exact string keys for the cache.</b> Natural language queries "
-            "almost never repeat exactly. You'll get near-zero hit rate.",
-            "<b>Setting the cosine threshold too low (e.g. 0.85).</b> At 0.85, "
-            "questions about different topics but similar words can collide — "
-            '"What caused World War I?" and "What ended World War I?" '
-            "might both hit the same cache entry. Start at 0.97.",
-            "<b>Not setting a TTL on cache entries.</b> Without expiry, cache entries "
-            "accumulate forever and stale answers stay in the cache after the corpus "
-            "is rebuilt. Set a 1-hour TTL.",
-            "<b>Loading the HNSW index per request.</b> Loading a 15 GB index file "
-            "takes 30+ seconds. Load it once in the FastAPI lifespan context manager "
-            "at startup and reuse it for every request.",
+            "<b>Missing event: line in SSE.</b> Without the named-event line the browser "
+            "dispatches everything as an unnamed 'message' event — your type-specific "
+            "handlers never fire.",
+            "<b>Using EventSourceResponse from sse_starlette.</b> It prepends data: to "
+            "every yielded string, double-wrapping your pre-formatted frames.",
+            "<b>Running CPU-bound retrieval in the async event loop.</b> Blocks all requests. "
+            "Use asyncio.to_thread() for FAISS, BM25, and cross-encoder calls.",
+            "<b>Exact string keys for the semantic cache.</b> Natural language queries almost "
+            "never repeat exactly. You need cosine similarity >= 0.97 on embeddings.",
+            "<b>Setting the cosine threshold too low (e.g. 0.85).</b> 'What caused WWI?' and "
+            "'What ended WWI?' might both hit the same cache entry. Start at 0.97.",
+            "<b>Not adding CORS middleware.</b> Frontend (port 3000) and backend (port 8000) "
+            "are different origins — browsers block the fetch without Access-Control headers.",
+            "<b>Hardcoding the retrieval timeout too tight.</b> 200 ms works for HNSW-only "
+            "search but not for the full hybrid + rerank pipeline. Use 30 s.",
+            "<b>Loading the HNSW index per request.</b> A 15.9 GB index takes 30+ seconds to "
+            "load. Load once in the FastAPI lifespan context manager.",
         ]
     )
 )
 story.append(sp(8))
 
-# ── 9. New dependencies ────────────────────────────────────────────────────────
-story += [h1("9. New Dependencies"), hr()]
+# ── 10. Dependencies ────────────────────────────────────────────────────────────
+story += [h1("10. Dependencies Added in Phase 8"), hr()]
 story.append(
     kv_table(
         [
             (
                 "fastapi",
-                "The web framework. Handles routing, Pydantic validation, auto-docs at /docs.",
+                "Web framework. Routing, Pydantic validation, auto-docs at /docs.",
             ),
             (
                 "uvicorn[standard]",
-                "The ASGI server that runs FastAPI. The [standard] extra adds websocket "
-                "support and faster event loops.",
-            ),
-            (
-                "sse-starlette",
-                "Adds EventSourceResponse to FastAPI — wraps your async generator and "
-                "formats it as a proper SSE stream.",
+                "ASGI server. The [standard] extra adds faster event loops.",
             ),
             (
                 "redis",
-                "Async Redis client (redis.asyncio). Used for the semantic cache, "
-                "rate limit counters, and result storage.",
+                "Async Redis client (redis.asyncio). Semantic cache, rate limit counters, "
+                "result storage.",
             ),
             (
                 "structlog",
-                "Structured logging library. You already use it — Phase 8 adds "
-                "bind_contextvars() to attach tenant_id to every log line automatically.",
+                "Structured logging. Attaches tenant_id to every log line automatically.",
+            ),
+            (
+                "starlette",
+                "StreamingResponse used for SSE (bundled with FastAPI). "
+                "CORSMiddleware added to allow browser fetch from a different port.",
             ),
         ]
     )
@@ -841,21 +821,20 @@ story.append(sp(8))
 story += [
     hr(),
     Paragraph(
-        "After Phase 8, the RAG pipeline is a real service: streaming, authenticated, "
-        "cost-controlled, and fault-tolerant. Phase 9 adds observability (Prometheus "
-        "metrics, Grafana dashboards, eval drift alerting). Phase 10 containerizes "
-        "and deploys it to AWS.",
+        "After Phase 8 the RAG pipeline is a real service: streaming, authenticated, "
+        "cost-controlled, fault-tolerant, and capable of two-hop reasoning. "
+        "Phase 9 adds observability (Prometheus metrics, Grafana dashboards, eval drift alerting). "
+        "Phase 10 containerizes and deploys to AWS.",
         sNote,
     ),
 ]
 
 # ── build PDF ─────────────────────────────────────────────────────────────────
-OUT = "docs/phase8_guide.pdf"
-
-os.makedirs("docs", exist_ok=True)
+OUT = Path("docs/phase8_guide.pdf")
+OUT.parent.mkdir(exist_ok=True)
 
 doc = SimpleDocTemplate(
-    OUT,
+    str(OUT),
     pagesize=letter,
     leftMargin=MARGIN,
     rightMargin=MARGIN,

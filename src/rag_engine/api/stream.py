@@ -43,18 +43,18 @@ def trace_step_event(
     )
 
 
-def passage_event(p: Citation, num: int) -> str:
-    return _ev(
-        "passage",
-        {
-            "num": num,
-            "title": p.title,
-            "snippet": p.text[:220],
-            "dense": p.score,
-            "bm25": 0.0,
-            "rerank": p.score,
-        },
-    )
+def passage_event(p: Citation, num: int, hop: int | None = None) -> str:
+    payload: dict[str, Any] = {
+        "num": num,
+        "title": p.title,
+        "snippet": p.text[:220],
+        "dense": round(p.dense_score, 4),
+        "bm25": round(p.bm25_score, 4),
+        "rerank": round(p.score, 4),
+    }
+    if hop is not None:
+        payload["hop"] = hop
+    return _ev("passage", payload)
 
 
 def generation_start_event() -> str:

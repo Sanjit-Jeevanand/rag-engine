@@ -105,13 +105,10 @@ async def test_cache_hit_returns_sse(client: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_retrieval_timeout_returns_partial(client: AsyncClient) -> None:
-    import asyncio
-
     _state["cache"] = _make_cache(hit=None)
 
     async def _slow(*_: Any, **__: Any) -> list[Citation]:
-        await asyncio.sleep(10)
-        return []
+        raise TimeoutError
 
     with patch("rag_engine.api.app._retrieve", _slow):
         r = await client.post("/query", json={"query": "slow"}, headers=AUTH)

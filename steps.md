@@ -432,14 +432,17 @@ Use this to reproduce the build from scratch or hand off to another engineer.
 123. Add Redis to `infra/redis.yml` (Docker Compose service): `redis:7-alpine`, port 6379,
      `maxmemory 256mb`, `maxmemory-policy allkeys-lru`
      - `docker compose -f infra/redis.yml up -d` for local dev
-124. `uv add fastapi uvicorn[standard] sse-starlette redis structlog`
-     - `sse-starlette` for `EventSourceResponse` (SSE support in FastAPI)
+124. `uv add fastapi uvicorn[standard] redis structlog`
+     - Note: `sse-starlette` NOT used — it double-wraps responses; use plain
+       `StreamingResponse(media_type="text/event-stream")` instead
      - `redis` (async client via `redis.asyncio`)
 
 ### Pydantic models
 125. Create `src/rag_engine/api/models.py`:
-     - `QueryRequest(BaseModel)`: `query: str`, `max_hops: int = 2`, `top_k: int = 5`
-     - `Citation(BaseModel)`: `passage_id: str`, `title: str`, `text: str`, `score: float`
+     - `QueryRequest(BaseModel)`: `query: str`, `max_hops: int = Field(default=2, ge=1, le=3)`, `top_k: int = Field(default=5, ge=1, le=20)`
+     - `Citation(BaseModel)`: `passage_id: str`, `title: str`, `text: str`, `score: float`,
+       `dense_score: float = 0.0`, `bm25_score: float = 0.0`
+       → `dense_score` = cosine similarity from HNSW; `bm25_score` = normalized RRF rank (0–1)
      - `QueryResult(BaseModel)`: `query_id: str`, `answer: str`, `citations: list[Citation]`,
        `cache_hit: bool`, `partial: bool`, `generation_unavailable: bool`,
        `tenant_id: str`, `cost_usd: float | None`
@@ -447,10 +450,11 @@ Use this to reproduce the build from scratch or hand off to another engineer.
 ### Auth middleware
 126. Create `src/rag_engine/api/auth.py`:
      - `TENANT_MAP: dict[str, str]` — maps bearer token → tenant_id (loaded from env `RAG_TENANT_TOKENS`)
-     - `resolve_tenant(token: str) -> str | None` — returns None on unknown token
+     - `resolve_tenant(token: str) -> str | None` — dict lookup; returns None on unknown token
      - `AuthMiddleware(BaseHTTPMiddleware)`: extract `Authorization: Bearer <token>` header;
        call `resolve_tenant`; on None return 401; bind `tenant_id` via
        `structlog.contextvars.bind_contextvars(tenant_id=tid)`
+     - Production path: swap dict lookup for Postgres `api_keys` table query (Phase 10)
 
 ### Redis semantic cache
 127. Create `src/rag_engine/api/cache.py`:
@@ -463,92 +467,148 @@ Use this to reproduce the build from scratch or hand off to another engineer.
      - `async set(query: str, result: QueryResult) -> None`:
          1. embed query → store in `cache:embeddings` Hash
          2. serialize result → `SET cache:result:<cache_key> <json> EX 3600` (1-hr TTL)
-     - Log `cache_hit=True/False` via structlog on every call
-     - Expose `hit_rate()` property — computed from a Redis counter (`cache:hits`, `cache:total`)
+     - Expose `hit_rate()` — computed from Redis counters (`cache:hits`, `cache:total`)
 
 ### Rate limiter
 128. Create `src/rag_engine/api/ratelimit.py`:
-     - Lua script stored as module-level constant:
-       ```lua
-       local key = KEYS[1]
-       local cap = tonumber(ARGV[1])
-       local now = tonumber(ARGV[2])
-       local window = tonumber(ARGV[3])
-       redis.call('ZREMRANGEBYSCORE', key, 0, now - window)
-       local count = redis.call('ZCARD', key)
-       if count < cap then
-         redis.call('ZADD', key, now, now .. math.random())
-         redis.call('EXPIRE', key, window)
-         return 1
-       end
-       return 0
-       ```
-       (sliding-window variant; alternatively use token-bucket with INCRBY + TTL)
-     - `async check(redis_client, tenant_id, cap=100, window_sec=60) -> bool`
-     - On False the endpoint returns 429 with `Retry-After: <window_sec>` header
+     - Lua sliding-window script; `async check(redis_client, tenant_id, cap=100, window_sec=60) -> bool`
+     - On False → 429 with `Retry-After: <window_sec>` header
 
-### SSE stream helpers
+### SSE stream helpers — named-event format
 129. Create `src/rag_engine/api/stream.py`:
-     - `token_event(text: str) -> str` → `data: {"type":"token","text":"<text>"}\n\n`
-     - `done_event(query_id: str) -> str` → `data: {"type":"done","query_id":"..."}\n\n`
-     - `partial_event(passages: list[Citation]) -> str` → `data: {"type":"partial",...}\n\n`
-     - `error_event(msg: str) -> str` → `data: {"type":"error","message":"..."}\n\n`
-     - `gen_unavailable_event(passages: list[Citation]) -> str` →
-       `data: {"type":"generation_unavailable","passages":[...]}\n\n`
+     - All events use `event: <name>\ndata: {json}\n\n` (named-event SSE, not unnamed `data:` only)
+     - Browser dispatches each event type via `source.addEventListener('passage', handler)`
+     - `_ev(name, payload) -> str` — base formatter
+     - `query_id_event(query_id)`, `cache_hit_event(hit, sim)`, `generation_start_event()`
+     - `trace_step_event(step, label, sub, ms, *, reflect, skipped)` — agent trace steps
+     - `passage_event(p: Citation, num, hop=None)` — includes `dense`, `bm25`, `rerank` scores
+     - `token_event(text)`, `done_event(query_id, *, mode, abstained, cached, lat, total_ms)`
+     - `error_event(message)`
 
-### FastAPI app — POST /query
+### FastAPI app — hybrid retrieval + multi-hop SSE
 130. Create `src/rag_engine/api/app.py`:
-     - `lifespan` context manager: create Redis client, load HNSW index + embedder + reranker
-     - Mount `AuthMiddleware`
-     - `POST /query` (returns `EventSourceResponse`):
-         1. Rate limit check → 429 if over limit
-         2. Semantic cache check → stream cached answer if hit; return
-         3. `asyncio.wait_for(retrieve_and_rerank(request.query), timeout=0.2)`
-            - `TimeoutError` → yield `partial_event(passages=[])` and return
-         4. Open `EventSourceResponse` generator
-         5. `asyncio.wait_for(llm_stream(passages, query), timeout=5.0)`:
-            - Stream tokens via `yield token_event(chunk)` as they arrive
-            - `TimeoutError` → yield `gen_unavailable_event(passages)` and return
-         6. Assemble `QueryResult`; write to Redis `result:<query_id>`; update cache
-         7. Yield `done_event(query_id)`
-     - `GET /query/{id}` → fetch `result:<id>` from Redis → return `QueryResult` JSON (404 if missing)
-     - `GET /health` → `{"status": "ok"}`
-     - `GET /ready` → check Redis + index loaded → `{"status": "ready"}` or 503
-     - `GET /metrics/cache` → `{"hit_rate": ..., "total": ..., "hits": ...}`
+     - CORS middleware: `CORSMiddleware(allow_origins=["*"])` for browser access
+     - `OMP_NUM_THREADS=1` set in env at startup — prevents Apple Silicon SIGSEGV when
+       PyTorch called from multiple threads
+     - `_RETRIEVAL_TIMEOUT = 30.0`, `_LLM_TIMEOUT = 5.0` (per token)
+     - `_retrieve_sync` — parallel BM25 + HNSW via `ThreadPoolExecutor(max_workers=2)`:
+         - `_dense()`: `hnsw.search(qvec, _CANDIDATE * 10)` → captures `distances` as cosine
+           similarities (valid because vectors are L2-normalised)
+         - `_sparse()`: `bm25.retrieve(query, _CANDIDATE)`
+         - Both run simultaneously; results fused via RRF, top `_RERANK=10` fed to cross-encoder
+         - `Citation.dense_score` = raw cosine from HNSW distances
+         - `Citation.bm25_score` = `sparse_rrf[doc] / _RRF_MAX` (normalised to 0–1)
+     - `_rerank_sync(query, passages, top_k)` — cross-encoder re-scores a merged passage list;
+       used after hop-2 to re-rank combined hop-1 + hop-2 passages against original query
+     - `_extract_bridge(query, passages)` — LLM call reading top-3 passages (300 chars each);
+       asks "what entity must be looked up next?"; returns None if LLM says NONE
+       → Fixed from single-passage version: passing all top-3 passages lets the LLM find bridge
+         hints that may appear in passage 2 or 3, not just the top-reranked passage
+     - `_sse_generator(query, top_k, max_hops, tenant_id, cache, redis)`:
+         1. Emit `query_id`, `cache_hit` events
+         2. Embed query → emit `trace_step embed`
+         3. `asyncio.wait_for(_retrieve, timeout=30s)` → emit `trace_step retrieve` +
+            `passage` events with `hop=1`
+         4. If `max_hops > 1`: call `_extract_bridge(query, passages)` (8s timeout)
+            → emit `trace_step hop1` (reflect=True) → `_retrieve(bridge)` (30s timeout)
+            → emit `trace_step hop2` + new `passage` events with `hop=2`
+            → `_rerank_sync(query, merged, top_k)` to re-rank combined set
+         5. LLM generation → emit `generation_start`, `token` events
+         6. Emit `trace_step generate`, then `done` with full latency breakdown
+     - `POST /query` → `StreamingResponse(_sse_generator(...), media_type="text/event-stream")`
+     - `GET /health`, `GET /ready`, `GET /query/{id}`, `GET /metrics/cache`
 
 ### LLM streaming integration
 131. Update `src/rag_engine/agent/llm.py`: add `stream_complete(messages) -> AsyncIterator[str]`
-     - Uses `client.chat.completions.create(..., stream=True)` → yields `chunk.choices[0].delta.content`
+     - Uses `client.chat.completions.create(..., stream=True)` → yields token strings
+     - Also used by `_extract_bridge` for bridge entity extraction
 
 ### Server startup
-132. Create `scripts/run_server.py`:
-     - `uvicorn src.rag_engine.api.app:app --host 0.0.0.0 --port 8000 --reload`
-     - Reads `RAG_PORT`, `RAG_WORKERS` from env
+132. Create `scripts/run_server.py`: uvicorn startup reading `RAG_PORT`, `RAG_WORKERS` from env
 
 ### Tests
-133. Create `tests/test_api.py`:
-     - `pytest-asyncio` + `httpx.AsyncClient` + `AsyncMock` for Redis and retrieval
-     - Test: auth missing → 401
-     - Test: auth invalid → 401
-     - Test: rate limit exceeded → 429 + Retry-After header
-     - Test: semantic cache hit → SSE stream contains cached tokens, no retrieval call
-     - Test: semantic cache miss → retrieval called, tokens streamed, result stored
-     - Test: retrieval timeout (mock `asyncio.wait_for` to raise `TimeoutError`) → partial event
-     - Test: LLM timeout → generation_unavailable event
-     - Test: `GET /query/{id}` after `POST /query` → full result with citations
-     - Test: `GET /ready` before index load → 503; after → 200
-134. `uv run pytest tests/test_api.py -v`
+133. Create `tests/test_api.py`: 13 tests — auth (401), rate limit (429), cache hit (SSE),
+     retrieval timeout (partial), LLM timeout (generation_unavailable), GET /query, /health,
+     /ready (200 + 503), /metrics/cache
+134. `uv run pytest tests/test_api.py -v` → 13 passed
+
+### Web UI
+135. Create `web/index.html`: single-page UI
+     - SSE listener uses `source.addEventListener('passage', ...)` (named events)
+     - Passage cards show three score bars: dense (cosine sim), BM25 (normalized RRF), rerank
+     - Agent trace panel: embed → retrieve → hop1 (reflect) → hop2 → generate steps
+     - Latency budget bar: per-stage breakdown + total vs P95 budget (3 000 ms)
+     - Wire protocol panel: live SSE event stream display
+     - Request body includes `max_hops: 2`
 
 ### Smoke test
-135. `docker compose -f infra/redis.yml up -d`
-136. `PYTHONPATH=src:. uv run python scripts/run_server.py`
-137. Send a query via `curl`:
-     ```bash
-     curl -N -H "Authorization: Bearer <token>" \
-       -H "Content-Type: application/json" \
-       -d '{"query": "Who was the director of Inception?"}' \
-       http://localhost:8000/query
+136. `docker compose -f infra/redis.yml up -d`
+137. `PYTHONPATH=src:. uv run python scripts/run_server.py`
+138. Multi-hop test: "What is the birth city of the engineer who designed the Eiffel Tower?"
+     → trace shows: embed → hop-1 retrieve → Bridge → Gustave Eiffel → hop-2 retrieve → generate
+139. Cache test: same query again → `cache_hit: true`, ~1 ms response
+140. Rate limit test: flood one tenant → 429s; second tenant unaffected
+
+---
+
+## Phase 9 — Observability & SLOs ✅
+
+### Prometheus instruments
+141. `uv add prometheus-client`
+142. Create `src/rag_engine/api/metrics.py`:
+     - `QUERY_TOTAL` — Counter, labels: `[tenant, cache_hit]`
+     - `QUERY_ERRORS` — Counter, labels: `[tenant, stage]`
+     - `STAGE_LATENCY` — Histogram, labels: `[stage]`, buckets tuned to pipeline range
+     - `HOP_COUNT` — Histogram, buckets: [1, 2, 3]
+     - `CACHE_HIT_RATE` — Gauge, rolling hit rate (updated every request)
+     - `FAITHFULNESS_SCORE` — Gauge, set by eval script; used for drift alerting
+
+### App wiring
+143. Wire metrics throughout `_sse_generator` in `app.py`:
+     - `STAGE_LATENCY.labels(stage=...).observe(ms / 1000)` after embed, hop-1, bridge, hop-2, generate
+     - `QUERY_ERRORS.labels(stage=...).inc()` in every timeout/exception branch
+     - `QUERY_TOTAL.labels(cache_hit="true"|"false").inc()` at end of each path
+     - `CACHE_HIT_RATE.set(hits / total)` after every request
+     - `HOP_COUNT.observe(hop_count)` at end of cache-miss path
+144. Add `GET /metrics` endpoint:
+     ```python
+     @app.get("/metrics")
+     async def prometheus_metrics() -> Response:
+         return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
      ```
-138. Send the same query again — confirm cache hit in logs and SSE response is immediate
-139. Flood one tenant → confirm 429s; confirm second tenant is unaffected
-140. `GET /metrics/cache` → confirm hit_rate ≥ 0.2 after repeated-query workload
+145. Extend structlog `log.info("query_complete")` to include:
+     `hop_count`, `embed_ms`, `retrieve_ms`, `gen_ms`, `total_ms`
+
+### Infra — Prometheus
+146. Create `infra/prometheus.yml`:
+     - `scrape_interval: 15s`, `evaluation_interval: 15s`
+     - target: `host.docker.internal:8000` (container → host via Docker magic hostname)
+     - `rule_files: [/etc/prometheus/alert_rules.yml]`
+
+### Infra — Alerting
+147. Create `infra/alert_rules.yml` — three alerts:
+     - `LatencySLOBreach` — P95 total > 3 s for 5 min → warning
+     - `HighErrorRate` — error ratio > 5% for 5 min → warning
+     - `FaithfulnessDrift` — `rag_eval_faithfulness < avg_over_time([7d]) - 0.02` for 10 min → critical
+
+### Infra — Grafana provisioning
+148. Create `infra/observability.yml` — Docker Compose:
+     - `prom/prometheus:v2.51.0` — mounts `prometheus.yml` and `alert_rules.yml` as read-only
+     - `grafana/grafana:10.4.2` — mounts `./grafana/provisioning` as read-only; anonymous viewer access
+     - `extra_hosts: host-gateway` on Prometheus so it can reach the API on the host
+149. Create `infra/grafana/provisioning/datasources/prometheus.yml`:
+     - auto-wires Prometheus at `http://prometheus:9090`; `access: proxy`; `isDefault: true`
+150. Create `infra/grafana/provisioning/dashboards/dashboard.yml`:
+     - file provider watching `/etc/grafana/provisioning/dashboards`
+151. Create `infra/grafana/provisioning/dashboards/rag_engine.json` — 8 panels:
+     - Row 1: QPS timeseries, cache hit rate timeseries, error rate timeseries, hop count histogram
+     - Row 2: per-stage P95 latency stacked timeseries (5 stage traces)
+     - Row 2: 3 gauges — total P95 (SLO: < 3 s), error ratio (SLO: < 5%), cache hit rate
+
+### SLO summary
+| SLI | SLO | Alert |
+|-----|-----|-------|
+| P95 end-to-end latency | < 3 000 ms | `LatencySLOBreach` |
+| Error ratio | < 5% | `HighErrorRate` |
+| Faithfulness | ≥ baseline − 2 pts | `FaithfulnessDrift` |
+| Error budget | 0.1% = ~43 min/month | (Phase 10 CI gate) |

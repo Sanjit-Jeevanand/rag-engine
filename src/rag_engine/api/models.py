@@ -14,6 +14,8 @@ class Citation(BaseModel):
     title: str
     text: str
     score: float
+    dense_score: float = 0.0
+    bm25_score: float = 0.0
 
 
 class QueryResult(BaseModel):
