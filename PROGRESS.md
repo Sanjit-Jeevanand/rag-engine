@@ -436,3 +436,60 @@ uv add pytrec-eval-terrier
 PYTHONPATH=src:. uv run python scripts/beir_eval.py
 PYTHONPATH=src:. uv run --env-file .env python scripts/hotpotqa_full_eval.py --n 20
 ```
+
+---
+
+## Phase 8 — Production Serving (streaming, auth, semantic caching, rate limiting)
+
+### Goal
+Serve the full RAG pipeline as a real API with the latency, cost, and safety properties the
+SLOs demand: streaming first-token delivery, per-tenant auth + cost attribution, semantic
+caching with a ≥ 20% hit rate, atomic per-tenant rate limiting, and graceful degradation on
+timeout.
+
+### Files to Create
+| File | Purpose |
+|------|---------|
+| `src/rag_engine/api/__init__.py` | API package root |
+| `src/rag_engine/api/app.py` | FastAPI app; `POST /query` SSE stream; `GET /query/{id}` full result |
+| `src/rag_engine/api/auth.py` | Bearer token validation; tenant ID resolution; structlog ContextVar |
+| `src/rag_engine/api/cache.py` | Redis semantic cache; embed query → cosine sim > 0.97 → cache hit |
+| `src/rag_engine/api/ratelimit.py` | Redis Lua atomic token bucket; 429 + Retry-After on over-limit |
+| `src/rag_engine/api/models.py` | Pydantic request/response models (`QueryRequest`, `QueryResult`, `Citation`) |
+| `src/rag_engine/api/stream.py` | SSE event types and streaming helpers (`token`, `done`, `error` events) |
+| `scripts/run_server.py` | uvicorn startup script |
+| `tests/test_api.py` | Endpoint tests (mocked Redis, mocked retrieval) |
+| `infra/redis.yml` | Docker Compose Redis service for local dev |
+
+### Architecture
+```
+POST /query
+  → auth middleware  (bearer token → tenant_id)
+  → rate limit check (Redis Lua token bucket; 429 if over limit)
+  → semantic cache   (embed query → Redis nearest-neighbor cosine sim > 0.97 → cache hit?)
+      ├─ HIT:  stream cached answer as SSE tokens; log cache_hit=True
+      └─ MISS: retrieval (asyncio.wait_for 200ms)
+                  └─ timeout → return partial results (top passages only)
+               rerank (sync, before stream opens)
+               open SSE stream → LLM (asyncio.wait_for 5s)
+                  └─ timeout → stream retrieved passages + generation_unavailable=True
+               write result + citations to Redis by query_id
+               update semantic cache
+```
+
+### Key Design Decisions
+- **SSE via `StreamingResponse`**: FastAPI native; each LLM token emits a `data: {"token": "..."}` event; final event is `data: {"done": true, "query_id": "..."}`.
+- **Retrieval before stream**: retrieval + rerank complete synchronously before `StreamingResponse` yields its first byte — no partial retrieval during generation.
+- **Semantic cache key**: store `(query_embedding, answer_text, citations)` in Redis Hash; on new query embed and scan cached embeddings via Redis sorted set for cosine sim > 0.97 — hit returns without touching the LLM.
+- **Lua rate limiter**: single EVAL round-trip: `if tokens > 0 then decr; return 1 else return 0 end` — no check-then-act race.
+- **Timeout fallback**: `asyncio.wait_for(retrieve(), timeout=0.2)` → on `TimeoutError` return passages in SSE with `partial=True`; `asyncio.wait_for(llm_stream(), timeout=5.0)` → on `TimeoutError` emit `generation_unavailable=True` event.
+- **Tenant logging**: `structlog.contextvars.bind_contextvars(tenant_id=tid)` in auth middleware — every downstream log line carries the tenant automatically.
+
+### Target Metrics
+| Metric | Target |
+|--------|--------|
+| End-to-end P95 | < 800 ms |
+| Semantic cache hit rate | ≥ 20% |
+| Time-to-first-token | < 300 ms (after retrieval) |
+| Cost per query (cache miss) | ≤ $0.005 |
+| Rate limit precision | atomic (no 2× burst) |

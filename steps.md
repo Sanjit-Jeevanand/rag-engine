@@ -423,3 +423,132 @@ Use this to reproduce the build from scratch or hand off to another engineer.
      → EM=0.40, F1=0.51, avg hops=2.00, abstained=4/20
      → Avg cost/query: $0.00060 (12% of $0.005 target ✓), total=$0.013 for 20 questions
      → Avg input tokens: 4,159.6, avg output tokens: 41.0, avg reranker calls: 43.0
+
+---
+
+## Phase 8 — Production Serving
+
+### Infra setup
+123. Add Redis to `infra/redis.yml` (Docker Compose service): `redis:7-alpine`, port 6379,
+     `maxmemory 256mb`, `maxmemory-policy allkeys-lru`
+     - `docker compose -f infra/redis.yml up -d` for local dev
+124. `uv add fastapi uvicorn[standard] sse-starlette redis structlog`
+     - `sse-starlette` for `EventSourceResponse` (SSE support in FastAPI)
+     - `redis` (async client via `redis.asyncio`)
+
+### Pydantic models
+125. Create `src/rag_engine/api/models.py`:
+     - `QueryRequest(BaseModel)`: `query: str`, `max_hops: int = 2`, `top_k: int = 5`
+     - `Citation(BaseModel)`: `passage_id: str`, `title: str`, `text: str`, `score: float`
+     - `QueryResult(BaseModel)`: `query_id: str`, `answer: str`, `citations: list[Citation]`,
+       `cache_hit: bool`, `partial: bool`, `generation_unavailable: bool`,
+       `tenant_id: str`, `cost_usd: float | None`
+
+### Auth middleware
+126. Create `src/rag_engine/api/auth.py`:
+     - `TENANT_MAP: dict[str, str]` — maps bearer token → tenant_id (loaded from env `RAG_TENANT_TOKENS`)
+     - `resolve_tenant(token: str) -> str | None` — returns None on unknown token
+     - `AuthMiddleware(BaseHTTPMiddleware)`: extract `Authorization: Bearer <token>` header;
+       call `resolve_tenant`; on None return 401; bind `tenant_id` via
+       `structlog.contextvars.bind_contextvars(tenant_id=tid)`
+
+### Redis semantic cache
+127. Create `src/rag_engine/api/cache.py`:
+     - `SemanticCache` class; constructor takes `redis.asyncio.Redis` client and `embedder`
+     - `async get(query: str) -> QueryResult | None`:
+         1. embed query → 384-dim vector
+         2. scan Redis Hash `cache:embeddings` for cosine sim > 0.97
+         3. on hit: fetch `cache:result:<cache_key>` (JSON), deserialize, return QueryResult
+         4. on miss: return None
+     - `async set(query: str, result: QueryResult) -> None`:
+         1. embed query → store in `cache:embeddings` Hash
+         2. serialize result → `SET cache:result:<cache_key> <json> EX 3600` (1-hr TTL)
+     - Log `cache_hit=True/False` via structlog on every call
+     - Expose `hit_rate()` property — computed from a Redis counter (`cache:hits`, `cache:total`)
+
+### Rate limiter
+128. Create `src/rag_engine/api/ratelimit.py`:
+     - Lua script stored as module-level constant:
+       ```lua
+       local key = KEYS[1]
+       local cap = tonumber(ARGV[1])
+       local now = tonumber(ARGV[2])
+       local window = tonumber(ARGV[3])
+       redis.call('ZREMRANGEBYSCORE', key, 0, now - window)
+       local count = redis.call('ZCARD', key)
+       if count < cap then
+         redis.call('ZADD', key, now, now .. math.random())
+         redis.call('EXPIRE', key, window)
+         return 1
+       end
+       return 0
+       ```
+       (sliding-window variant; alternatively use token-bucket with INCRBY + TTL)
+     - `async check(redis_client, tenant_id, cap=100, window_sec=60) -> bool`
+     - On False the endpoint returns 429 with `Retry-After: <window_sec>` header
+
+### SSE stream helpers
+129. Create `src/rag_engine/api/stream.py`:
+     - `token_event(text: str) -> str` → `data: {"type":"token","text":"<text>"}\n\n`
+     - `done_event(query_id: str) -> str` → `data: {"type":"done","query_id":"..."}\n\n`
+     - `partial_event(passages: list[Citation]) -> str` → `data: {"type":"partial",...}\n\n`
+     - `error_event(msg: str) -> str` → `data: {"type":"error","message":"..."}\n\n`
+     - `gen_unavailable_event(passages: list[Citation]) -> str` →
+       `data: {"type":"generation_unavailable","passages":[...]}\n\n`
+
+### FastAPI app — POST /query
+130. Create `src/rag_engine/api/app.py`:
+     - `lifespan` context manager: create Redis client, load HNSW index + embedder + reranker
+     - Mount `AuthMiddleware`
+     - `POST /query` (returns `EventSourceResponse`):
+         1. Rate limit check → 429 if over limit
+         2. Semantic cache check → stream cached answer if hit; return
+         3. `asyncio.wait_for(retrieve_and_rerank(request.query), timeout=0.2)`
+            - `TimeoutError` → yield `partial_event(passages=[])` and return
+         4. Open `EventSourceResponse` generator
+         5. `asyncio.wait_for(llm_stream(passages, query), timeout=5.0)`:
+            - Stream tokens via `yield token_event(chunk)` as they arrive
+            - `TimeoutError` → yield `gen_unavailable_event(passages)` and return
+         6. Assemble `QueryResult`; write to Redis `result:<query_id>`; update cache
+         7. Yield `done_event(query_id)`
+     - `GET /query/{id}` → fetch `result:<id>` from Redis → return `QueryResult` JSON (404 if missing)
+     - `GET /health` → `{"status": "ok"}`
+     - `GET /ready` → check Redis + index loaded → `{"status": "ready"}` or 503
+     - `GET /metrics/cache` → `{"hit_rate": ..., "total": ..., "hits": ...}`
+
+### LLM streaming integration
+131. Update `src/rag_engine/agent/llm.py`: add `stream_complete(messages) -> AsyncIterator[str]`
+     - Uses `client.chat.completions.create(..., stream=True)` → yields `chunk.choices[0].delta.content`
+
+### Server startup
+132. Create `scripts/run_server.py`:
+     - `uvicorn src.rag_engine.api.app:app --host 0.0.0.0 --port 8000 --reload`
+     - Reads `RAG_PORT`, `RAG_WORKERS` from env
+
+### Tests
+133. Create `tests/test_api.py`:
+     - `pytest-asyncio` + `httpx.AsyncClient` + `AsyncMock` for Redis and retrieval
+     - Test: auth missing → 401
+     - Test: auth invalid → 401
+     - Test: rate limit exceeded → 429 + Retry-After header
+     - Test: semantic cache hit → SSE stream contains cached tokens, no retrieval call
+     - Test: semantic cache miss → retrieval called, tokens streamed, result stored
+     - Test: retrieval timeout (mock `asyncio.wait_for` to raise `TimeoutError`) → partial event
+     - Test: LLM timeout → generation_unavailable event
+     - Test: `GET /query/{id}` after `POST /query` → full result with citations
+     - Test: `GET /ready` before index load → 503; after → 200
+134. `uv run pytest tests/test_api.py -v`
+
+### Smoke test
+135. `docker compose -f infra/redis.yml up -d`
+136. `PYTHONPATH=src:. uv run python scripts/run_server.py`
+137. Send a query via `curl`:
+     ```bash
+     curl -N -H "Authorization: Bearer <token>" \
+       -H "Content-Type: application/json" \
+       -d '{"query": "Who was the director of Inception?"}' \
+       http://localhost:8000/query
+     ```
+138. Send the same query again — confirm cache hit in logs and SSE response is immediate
+139. Flood one tenant → confirm 429s; confirm second tenant is unaffected
+140. `GET /metrics/cache` → confirm hit_rate ≥ 0.2 after repeated-query workload

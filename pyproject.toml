@@ -20,16 +20,22 @@ dependencies = [
     "transformers>=5.0.0rc3",
     "openai>=2.41.1",
     "pytrec-eval-terrier>=0.5.10",
+    "fastapi>=0.136.3",
+    "uvicorn[standard]>=0.49.0",
+    "sse-starlette>=3.4.4",
+    "redis>=8.0.0",
 ]
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
     "hypothesis>=6.155.2",
     "mypy>=1.10",
     "pip-audit>=2.7",
     "pre-commit>=3.7",
     "py-spy>=0.4.2",
     "pytest>=8.2",
+    "pytest-asyncio>=1.4.0",
     "reportlab>=4.5.1",
     "ruff>=0.4",
 ]
@@ -47,6 +53,9 @@ line-length = 88
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/gen_phase8_pdf.py" = ["E501"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["rag_engine"]
