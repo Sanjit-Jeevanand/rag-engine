@@ -20,7 +20,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from redis.asyncio import Redis
 from starlette.responses import StreamingResponse
 
-from rag_engine.api import models, ratelimit
+from rag_engine.api import auth, models, ratelimit
 from rag_engine.api import stream as ev
 from rag_engine.api.auth import AuthMiddleware
 from rag_engine.api.cache import SemanticCache
@@ -99,8 +99,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception:
         logger.warning("api_startup_partial_no_index")
 
+    if cfg.db_url:
+        import asyncpg
+
+        auth._pool = await asyncpg.create_pool(cfg.db_url, min_size=1, max_size=5)
+        logger.info("postgres_pool_created")
+
     yield
 
+    if auth._pool is not None:
+        await auth._pool.close()
     await redis.aclose()
 
 

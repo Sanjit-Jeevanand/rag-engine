@@ -17,6 +17,8 @@ class Settings(BaseSettings):
 
     eval_results_path: str = "eval/results"
 
+    db_url: str = ""  # Postgres DSN; empty = env-dict auth only
+
     hnsw_path: str = "data/hnsw.index"
     hnsw_ef_search: int = 64  # Phase 3 Pareto knee: 98.6% recall, 0.387ms p50
     search_workers: int = 8  # one per performance core; efficiency cores add noise

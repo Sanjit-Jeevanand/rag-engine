@@ -589,8 +589,8 @@
 
   <!-- ── hero ─────────────────────────────────────────── -->
   <section class="hero">
-    <div class="eyebrow">1M articles · 8.8M chunks · built from scratch, no LangChain</div>
-    <h1>Ask a million Wikipedia articles.<br>Get a <span class="grad">cited</span> answer.</h1>
+    <div class="eyebrow">100K articles in production · benchmarked on 1M · hybrid retrieval · multi-hop agent</div>
+    <h1>Ask Wikipedia.<br>Get a <span class="grad">cited</span> answer.</h1>
     <p class="sub">
       Hybrid HNSW + BM25 retrieval, cross-encoder reranking, and a hand-rolled multi-hop
       agent that extracts bridge entities, checks its own work — and refuses to answer
@@ -617,8 +617,8 @@
     </div>
 
     <div class="stats-strip" data-rv>
-      <div class="stat"><div class="v num" data-cu="1000000" data-fmt="compact">0</div><div class="k">articles</div></div>
-      <div class="stat"><div class="v num" data-cu="8797519" data-fmt="compact">0</div><div class="k">chunks indexed</div></div>
+      <div class="stat"><div class="v num" data-cu="100000" data-fmt="compact">0</div><div class="k">articles (prod)</div></div>
+      <div class="stat"><div class="v num" data-cu="1000000" data-fmt="compact">0</div><div class="k">articles (benchmark)</div></div>
       <div class="stat"><div class="v num" data-cu="0.387" data-dec="3" data-suf=" ms">0</div><div class="k">retrieval p50</div></div>
       <div class="stat"><div class="v num" data-cu="18471" data-fmt="comma">0</div><div class="k">search QPS</div></div>
       <div class="stat"><div class="v num" data-pre="+" data-cu="20" data-suf=" EM">0</div><div class="k">multi-hop gain</div></div>
@@ -785,7 +785,8 @@
     <div class="sec-head" data-rv>
       <div class="kicker">Receipts</div>
       <h2>Real numbers, reproducible runs</h2>
-      <p>Seed 42 · official <code>pytrec_eval</code> scoring · every figure below is a measured result, not a target.</p>
+      <p>Seed 42 · official <code>pytrec_eval</code> scoring · every figure below is a measured result, not a target.<br>
+      Benchmarked on 1M articles (8.8M vectors) · production serves top 100K articles on a €7.49/mo Hetzner CX33.</p>
     </div>
 
     <div class="bench-grid">
@@ -812,7 +813,7 @@
         <div class="bk">Retrieval latency</div>
         <div class="bv num"><span data-cu="0.387" data-dec="3">0</span><em> ms p50</em></div>
         <div class="bd">98.6% recall@10</div>
-        <div class="bs">HNSW ef=64 · 8.8M vectors<br>300× faster than exact search</div>
+        <div class="bs">HNSW ef=64 · benchmarked at 8.8M vectors<br>300× faster than exact search</div>
       </div>
 
       <div class="bcard" data-rv>

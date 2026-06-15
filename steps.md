@@ -612,3 +612,121 @@ Use this to reproduce the build from scratch or hand off to another engineer.
 | Error ratio | < 5% | `HighErrorRate` |
 | Faithfulness | ≥ baseline − 2 pts | `FaithfulnessDrift` |
 | Error budget | 0.1% = ~43 min/month | (Phase 10 CI gate) |
+
+---
+
+## Phase 10 — Containerize · IaC · CI/CD
+
+### 100K Production Dataset
+152. `uv run python scripts/build_production_index.py --limit 100000`
+     → scans dump, selects top 100K articles by incoming_links, loads vectors via memmap
+     → builds IndexHNSWFlat (M=32, efC=200, efSearch=64): 2,308,125 vectors
+     → saves `data/hnsw_100k.index` (4.17 GB), runs ~30 min
+153. `uv run python scripts/build_100k_dataset.py`
+     → renames `docs.db → docs_1m.db`, `vectors.bin → vectors_1m.bin`, `hnsw.index → hnsw_1m.index`
+     → builds new `docs.db`: 100K article rows, `vector_offset` renumbered 0,1,2... (sequential, matches FAISS IDs)
+     → builds new `vectors.bin` (3.55 GB): reads 1M file at original offsets, writes in order
+     → copies `hnsw_100k.index → hnsw.index`
+     → root cause fix: FAISS IDs 0,1,2... must match DB vector_offsets exactly; renumbering eliminates translation table
+
+### Dockerfile
+154. Create `Dockerfile` with two stages:
+     - **builder**: `FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim` → `uv sync --frozen --no-dev`
+     - **runtime**: `FROM python:3.12-slim` → copy `.venv` and `src/`, add non-root `rag` system user
+     - `OMP_NUM_THREADS=1 TOKENIZERS_PARALLELISM=false` in ENV (prevents PyTorch SIGSEGV on multi-thread)
+     - `VOLUME ["/app/data", "/app/.cache/huggingface"]` — data and model weights stay outside image
+     - `USER rag` — non-root; no shell, no home directory
+
+### Docker Compose
+155. Update `infra/docker-compose.yml` — 5 services:
+     - **api**: `image: ghcr.io/sanjit-jeevanand/rag-engine:latest`; `start_period: 60s` healthcheck
+     - **redis**: `redis:7-alpine`, `maxmemory 512mb`, healthcheck `redis-cli ping`
+     - **postgres**: `postgres:16-alpine`, mounts `init.sql` as entrypoint init; healthcheck `pg_isready -U rag`
+     - **prometheus**: `prom/prometheus:v2.51.0`, mounts `prometheus-stack.yml` + `alert_rules.yml`
+     - **grafana**: `grafana/grafana:10.4.2`, mounts provisioning directory
+     - api `depends_on`: both redis and postgres must be `service_healthy` before api starts
+
+### Postgres api_keys Auth
+156. Create `infra/postgres/init.sql`:
+     ```sql
+     CREATE TABLE IF NOT EXISTS api_keys (
+         key_hash TEXT PRIMARY KEY,  -- SHA-256(raw_token), hex
+         tenant_id TEXT NOT NULL,
+         created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+         active BOOLEAN NOT NULL DEFAULT TRUE
+     );
+     ```
+157. Rewrite `src/rag_engine/api/auth.py`:
+     - module-level `_pool: asyncpg.Pool | None = None` (set by lifespan)
+     - `_hash(token) -> str`: `hashlib.sha256(token.encode()).hexdigest()`
+     - `async resolve_tenant(token) -> str | None`: Postgres first, env-dict fallback
+     - `AuthMiddleware.dispatch` now `await`s `resolve_tenant`
+158. Add `db_url: str = ""` to `src/rag_engine/config.py`
+159. Add `asyncpg>=0.29.0` to `pyproject.toml` dependencies; `uv sync` → installs asyncpg==0.31.0
+160. Add asyncpg pool creation to FastAPI lifespan in `app.py`:
+     ```python
+     if cfg.db_url:
+         import asyncpg
+         auth._pool = await asyncpg.create_pool(cfg.db_url, min_size=1, max_size=5)
+     ```
+     Pool closed in lifespan cleanup: `if auth._pool: await auth._pool.close()`
+161. Create `scripts/gen_api_keys.py`:
+     - generates `sk-{secrets.token_hex(24)}` raw tokens
+     - SHA-256 hashes → inserts into `api_keys` with `ON CONFLICT DO NOTHING`
+     - prints raw tokens to stdout only (never stored)
+     - usage: `uv run python scripts/gen_api_keys.py --db-url postgresql://... --count 10 --prefix user`
+
+### Terraform — Hetzner IaC
+162. Create `infra/terraform/main.tf`:
+     - `hcloud_ssh_key`, `hcloud_firewall` (ports 22/8000/3000), `hcloud_server` (cx33, ubuntu-24.04, fsn1)
+     - `user_data` installs docker-ce + docker-compose-plugin, enables Docker on boot
+163. Create `infra/terraform/variables.tf`: `hcloud_token` (sensitive), `ssh_public_key`
+164. Create `infra/terraform/outputs.tf`: `server_ip`, `api_url`, `grafana_url`, `ssh_command`
+165. Generate SSH key (first time): `ssh-keygen -t ed25519 -C "rag-engine" -f ~/.ssh/id_ed25519`
+166. `terraform -chdir=infra/terraform init`
+167. `terraform -chdir=infra/terraform apply -var="ssh_public_key=$(cat ~/.ssh/id_ed25519.pub)"`
+     → provisions Hetzner CX33; output: `server_ip = 167.233.55.52`
+
+### Data Transfer to Server
+168. Transfer Compose stack files:
+     ```bash
+     rsync -avz infra/ root@167.233.55.52:/opt/rag-engine/infra/
+     ```
+169. Transfer production data files (sequential — each is multi-GB):
+     ```bash
+     scp data/docs.db root@167.233.55.52:/opt/rag-engine/data/docs.db
+     rsync -avz --progress data/hnsw.index root@167.233.55.52:/opt/rag-engine/data/
+     rsync -avz --progress data/vectors.bin root@167.233.55.52:/opt/rag-engine/data/
+     rsync -avz --progress data/bm25_index/ root@167.233.55.52:/opt/rag-engine/data/bm25_index/
+     ```
+
+### GitHub Actions CI/CD
+170. Create `.github/workflows/deploy.yml`:
+     - trigger: `workflow_dispatch` (manual only)
+     - job 1 `build-and-push`:
+       - `docker/setup-buildx-action@v3` — enables cross-platform builds
+       - `docker/login-action@v3` — login to `ghcr.io` with `GITHUB_TOKEN`
+       - `docker/build-push-action@v6` — `platforms: linux/amd64`, `cache-from/to: type=gha`
+       - pushes `ghcr.io/sanjit-jeevanand/rag-engine:latest`
+     - job 2 `deploy` (needs build-and-push):
+       - `appleboy/ssh-action@v1` → SSH to server
+       - `cd /opt/rag-engine/infra && docker compose pull api && docker compose up -d api && docker image prune -f`
+171. Add GitHub secrets:
+     - `HETZNER_HOST = 167.233.55.52`
+     - `SSH_PRIVATE_KEY` = contents of `~/.ssh/id_ed25519`
+
+### Start Production Stack
+172. SSH to server: `ssh root@167.233.55.52`
+173. `cd /opt/rag-engine/infra && docker compose up -d`
+     → pulls ghcr.io image, starts all 5 services; api healthcheck waits 60 s for HNSW load
+174. Generate API keys (from server — Postgres port not exposed externally):
+     ```bash
+     ssh root@167.233.55.52 \
+       "docker exec infra-api-1 uv run python scripts/gen_api_keys.py \
+         --db-url postgresql://rag:rag@postgres:5432/rag --count 10"
+     ```
+
+### Documentation
+175. Write `phase10()` function in `scripts/gen_phase_docs.py` (8 sections covering all above)
+176. `uv run python scripts/gen_phase_docs.py` → generates `docs/phase10_containerize_iac_cicd.pdf`
+177. Update `PROGRESS.md` and `steps.md` with Phase 10

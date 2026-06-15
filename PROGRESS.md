@@ -523,7 +523,67 @@ docker compose -f infra/observability.yml up -d
 
 ---
 
-## Phase 10 — Containerize · IaC · CI/CD ⬜ PLANNED
-Multi-stage Dockerfiles, docker-compose full stack, Terraform (ECS Fargate architecture; deploy to Hetzner CAX11),
-GitHub Actions eval gate (sets FAITHFULNESS_SCORE gauge), blue-green deploy.
-Also: build 100K-article HNSW index for production; swap `resolve_tenant()` dict for Postgres `api_keys` table.
+## Phase 10 — Containerize · IaC · CI/CD ✅
+Goal: ship a reproducible production deployment — multi-stage Docker image, five-service Compose stack, Terraform for Hetzner IaC, Postgres api_keys auth with SHA-256 hashing, and a GitHub Actions workflow that builds and deploys on demand.
+
+### Files Created / Modified
+| File | Change |
+|------|--------|
+| `Dockerfile` | Multi-stage: uv builder → python:3.12-slim runtime; non-root `rag` user; OMP_NUM_THREADS=1 |
+| `infra/docker-compose.yml` | 5 services: api, redis, postgres, prometheus, grafana; healthchecks; `start_period: 60s` on api |
+| `infra/postgres/init.sql` | `api_keys` table: `key_hash TEXT PRIMARY KEY`, `tenant_id`, `active` |
+| `infra/terraform/main.tf` | Hetzner CX33, Ubuntu 24.04, fsn1, Docker user_data, firewall ports 22/8000/3000 |
+| `infra/terraform/variables.tf` | `hcloud_token` (sensitive), `ssh_public_key` |
+| `infra/terraform/outputs.tf` | `server_ip`, `api_url`, `grafana_url`, `ssh_command` |
+| `.github/workflows/deploy.yml` | `workflow_dispatch`; buildx `linux/amd64`; push to ghcr.io; SSH deploy via appleboy/ssh-action |
+| `src/rag_engine/api/auth.py` | Full rewrite: SHA-256 hashing, asyncpg pool (module-level `_pool`), env-dict fallback |
+| `src/rag_engine/config.py` | Added `db_url: str = ""` for Postgres DSN |
+| `pyproject.toml` | Added `asyncpg>=0.29.0` |
+| `scripts/build_production_index.py` | Reverted to clean state: load_vectors() returns ndarray only; no id_map |
+| `scripts/build_100k_dataset.py` | Renames 1M files to `*_1m.*`; rebuilds docs.db with renumbered sequential offsets; writes new vectors.bin |
+| `scripts/gen_api_keys.py` | Generates `sk-{token_hex(24)}` tokens, inserts SHA-256 hashes into Postgres |
+
+### 100K Production Index
+The 1M files are kept as `*_1m.*` for local benchmarking. Production serves the top 100K Wikipedia articles by `incoming_links`:
+- `docs.db` — 2,308,125 chunk rows, `vector_offset` renumbered 0,1,2... to match HNSW sequential IDs
+- `vectors.bin` — 3.55 GB
+- `hnsw.index` — 4.17 GB (copied from `hnsw_100k.index`)
+
+**The alignment trick**: FAISS assigns IDs 0,1,2... in insertion order. `build_100k_dataset.py` renumbers `vector_offset` in the same order so `first_chunk_offsets[faiss_id]` always hits the correct article — no translation map needed.
+
+### Postgres Auth
+`resolve_tenant(token)` is now `async`:
+1. If `_pool` is set (Postgres available): SHA-256 hash the token, query `api_keys WHERE key_hash=$1 AND active=TRUE`
+2. Fallback: `TENANT_MAP.get(token)` (env-dict, still works for B2B / dev)
+
+The `_pool` (asyncpg) is created in the FastAPI lifespan on startup and closed on shutdown.
+
+### Terraform Deploy
+```bash
+terraform -chdir=infra/terraform apply \
+    -var="ssh_public_key=$(cat ~/.ssh/id_ed25519.pub)"
+# Outputs: server_ip = 167.233.55.52
+```
+
+### Key Decisions
+- **Hetzner CX33 over AWS**: 4 vCPU, 8 GB RAM, €7.49/mo vs ~$30/mo for comparable AWS instance. HNSW fits in RAM with 4 GB headroom for Redis + Postgres + Prometheus.
+- **`workflow_dispatch` only**: no deploy on every push — prevents accidental production overwrites. Triggered manually from GitHub Actions UI.
+- **`--platform linux/amd64`**: dev machine is ARM (Apple M4 Pro); server is x86. Cross-compilation via Docker buildx.
+- **`start_period: 60s`** on API healthcheck: HNSW load (4.17 GB) + model warm-up takes ~1 min; grace period prevents premature failure signals.
+- **SHA-256, not bcrypt**: API tokens are 48 random hex chars (192 bits). At this entropy level SHA-256 is sufficient — bcrypt cost is designed for low-entropy passwords, not random secrets.
+
+### 100K Eval Results
+| Corpus | nDCG@10 | Recall@10 | MRR | Questions |
+|--------|---------|-----------|-----|-----------|
+| 1M articles (benchmark) | 0.4618 | 0.4780 | 0.5994 | 1,000 |
+| 100K articles (production) | 0.3479 | 0.3490 | 0.4411 | 202 |
+
+Note: only 202 of 1,000 HotpotQA questions have both supporting articles in the top 100K corpus. Numbers are not directly comparable to the 1M benchmark.
+
+### Server: Hetzner CX33 at `167.233.55.52`
+```bash
+ssh root@167.233.55.52
+# cd /opt/rag-engine/infra && docker compose up -d
+# API  → http://167.233.55.52:8000
+# Grafana → http://167.233.55.52:3000
+```

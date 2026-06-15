@@ -1,3 +1,4 @@
+import argparse
 import json
 from pathlib import Path
 
@@ -6,16 +7,29 @@ from eval.metrics import mrr, ndcg_at_k, recall_at_k
 
 DB_PATH = Path("data/docs.db")
 VECTORS_PATH = Path("data/vectors.bin")
-GOLD_PATH = Path("eval/hotpotqa_gold.json")
-RESULTS_PATH = Path("eval/results/latest.json")
 K = 10
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--gold",
+        type=Path,
+        default=Path("eval/hotpotqa_gold.json"),
+        help="Gold set to evaluate against (default: eval/hotpotqa_gold.json)",
+    )
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=Path("eval/results/latest.json"),
+        help="Output path for results (default: eval/results/latest.json)",
+    )
+    args = parser.parse_args()
+
     print("loading index...")
     index = VectorIndex(DB_PATH, VECTORS_PATH)
 
-    gold = json.loads(GOLD_PATH.read_text())
+    gold = json.loads(args.gold.read_text())
     print(f"evaluating {len(gold)} questions at k={K}...")
 
     ndcgs, recalls, mrrs = [], [], []
@@ -38,13 +52,13 @@ def main() -> None:
         "n_questions": len(gold),
     }
 
-    RESULTS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    RESULTS_PATH.write_text(json.dumps(results, indent=2))
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(json.dumps(results, indent=2))
 
     print("\n--- results ---")
     for k, v in results.items():
         print(f"  {k}: {v}")
-    print(f"\nsaved → {RESULTS_PATH}")
+    print(f"\nsaved → {args.out}")
 
 
 if __name__ == "__main__":
