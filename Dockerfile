@@ -31,9 +31,9 @@ ENV PATH="/app/.venv/bin:$PATH" \
     TOKENIZERS_PARALLELISM=false \
     HF_HOME=/app/.cache/huggingface
 
-VOLUME ["/app/data", "/app/.cache/huggingface"]
+RUN mkdir -p /app/.cache/huggingface /app/data && chown -R rag:rag /app
 
-RUN chown -R rag:rag /app
+VOLUME ["/app/data", "/app/.cache/huggingface"]
 
 USER rag
 

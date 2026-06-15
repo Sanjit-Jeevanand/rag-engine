@@ -64,7 +64,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         embedder = SentenceTransformer("BAAI/bge-small-en-v1.5", device="cpu")
         _state["embedder"] = embedder
         _state["cache"] = SemanticCache(redis, embedder)
+        logger.info("embedder_loaded")
+    except Exception as exc:
+        logger.warning("embedder_load_failed", error=str(exc))
 
+    try:
         hnsw_path = Path(cfg.hnsw_path)
         bm25_path = Path("data/bm25_index")
         db_path = Path("data/docs.db")
@@ -97,8 +101,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             logger.info("api_startup_complete")
         else:
             logger.warning("api_startup_partial_no_index")
-    except Exception:
-        logger.warning("api_startup_partial_no_index")
+    except Exception as exc:
+        logger.warning("api_startup_partial_no_index", error=str(exc), exc_info=True)
 
     if cfg.db_url:
         import asyncpg
