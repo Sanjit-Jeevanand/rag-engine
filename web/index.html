@@ -574,9 +574,7 @@
 </header>
 
 <div class="settings" id="settings">
-  <h4>Backend connection</h4>
-  <label for="cfg-url">API base URL</label>
-  <input id="cfg-url" type="text" placeholder="http://localhost:8000" spellcheck="false">
+  <h4>Backend authentication</h4>
   <label for="cfg-token">Bearer token</label>
   <input id="cfg-token" type="password" placeholder="API_TOKEN" spellcheck="false">
   <div class="row">
@@ -906,8 +904,7 @@
 /* ── config ─────────────────────────────────────────────────────────── */
 
 const CFG = {
-  get apiBase() { return localStorage.getItem("rag.apiBase") || "http://localhost:8000"; },
-  set apiBase(v) { localStorage.setItem("rag.apiBase", v); },
+  get apiBase() { return "http://167.233.55.52:8000"; },
   get token() { return localStorage.getItem("rag.token") || ""; },
   set token(v) { localStorage.setItem("rag.token", v); },
 };
@@ -1491,7 +1488,6 @@ function toggleSettings(open) {
   const want = open ?? !settingsEl.classList.contains("open");
   settingsEl.classList.toggle("open", want);
   if (want) {
-    $("cfg-url").value = CFG.apiBase;
     $("cfg-token").value = CFG.token;
     $("probe-status").textContent = "";
   }
@@ -1499,7 +1495,6 @@ function toggleSettings(open) {
 $("settings-btn").addEventListener("click", (e) => { e.stopPropagation(); toggleSettings(); });
 $("mode-badge").addEventListener("click", (e) => { e.stopPropagation(); toggleSettings(true); });
 $("cfg-save").addEventListener("click", () => {
-  CFG.apiBase = $("cfg-url").value.trim().replace(/\/$/, "") || "http://localhost:8000";
   CFG.token = $("cfg-token").value.trim();
   $("probe-status").textContent = "probing…";
   probe(true);

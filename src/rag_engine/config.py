@@ -17,6 +17,7 @@ class Settings(BaseSettings):
 
     eval_results_path: str = "eval/results"
 
+    redis_url: str = "redis://localhost:6379"
     db_url: str = ""  # Postgres DSN; empty = env-dict auth only
 
     hnsw_path: str = "data/hnsw.index"

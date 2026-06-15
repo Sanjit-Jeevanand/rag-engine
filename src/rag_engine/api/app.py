@@ -50,7 +50,7 @@ _state: dict[str, Any] = {}
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     cfg = Settings()
-    redis_url = getattr(cfg, "redis_url", "redis://localhost:6379")
+    redis_url = cfg.redis_url
     redis: Redis = Redis.from_url(redis_url, decode_responses=False)
     _state["redis"] = redis
     _state["embedder"] = None
