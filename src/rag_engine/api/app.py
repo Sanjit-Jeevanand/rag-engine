@@ -124,7 +124,7 @@ app.add_middleware(
 
 _web = Path(__file__).parent.parent.parent.parent / "web"
 if _web.exists():
-    app.mount("/", StaticFiles(directory=_web, html=True), name="static")
+    app.mount("/ui", StaticFiles(directory=_web, html=True), name="static")
 
 
 def _get_redis() -> Redis:
