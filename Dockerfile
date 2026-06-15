@@ -21,6 +21,7 @@ COPY --from=builder /app/.venv /app/.venv
 COPY --from=builder /app/src   /app/src
 
 COPY web/ /app/web/
+COPY scripts/ /app/scripts/
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONPATH="/app/src" \
