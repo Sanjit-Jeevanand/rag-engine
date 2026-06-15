@@ -35,7 +35,7 @@ class SemanticCache:
         vecs = self._embedder.encode([query], normalize_embeddings=True)
         return np.array(vecs[0], dtype=np.float32)
 
-    async def get(self, query: str) -> QueryResult | None:
+    async def get(self, query: str) -> tuple[QueryResult | None, np.ndarray]:
         await self._redis.incr(_TOTAL_KEY)
         q_vec = self._embed(query)
 
@@ -55,13 +55,16 @@ class SemanticCache:
             if raw:
                 await self._redis.incr(_HIT_KEY)
                 logger.info("semantic_cache_hit", sim=round(best_sim, 4))
-                return QueryResult.model_validate(json.loads(raw))
+                return QueryResult.model_validate(json.loads(raw)), q_vec
 
         logger.info("semantic_cache_miss")
-        return None
+        return None, q_vec
 
-    async def set(self, query: str, result: QueryResult) -> None:
-        q_vec = self._embed(query)
+    async def set(
+        self, query: str, result: QueryResult, q_vec: np.ndarray | None = None
+    ) -> None:
+        if q_vec is None:
+            q_vec = self._embed(query)
         cache_key = result.query_id
         await self._redis.hset(_EMBED_KEY, cache_key, pickle.dumps(q_vec))
         await self._redis.set(

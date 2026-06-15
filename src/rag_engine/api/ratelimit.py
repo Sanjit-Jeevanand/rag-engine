@@ -23,8 +23,8 @@ return 0
 async def check(
     redis: Redis,
     tenant_id: str,
-    cap: int = 10,
-    window_sec: int = 600,
+    cap: int = 20,
+    window_sec: int = 604800,  # 7 days
 ) -> bool:
     key = f"ratelimit:{tenant_id}"
     now = time.time()

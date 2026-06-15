@@ -412,7 +412,8 @@
   }
   .seg.embed    { background: #6366f1; }
   .seg.retrieve { background: #14b8a6; }
-  .seg.rerank   { background: #0ea5e9; }
+  .seg.bridge   { background: #f59e0b; }
+  .seg.hop2     { background: #10b981; }
   .seg.generate { background: rgba(99,102,241,0.35); }
   .seg.cache    { background: linear-gradient(90deg, #0e7490, #22d3ee); }
   .wf-legend { display: flex; gap: 16px; margin-top: 12px; flex-wrap: wrap; font-size: 11.5px; color: var(--mut); }
@@ -604,7 +605,10 @@
     <div class="examples">
       <button class="chip" data-q="Why is the sky blue?">Why is the sky blue?</button>
       <button class="chip" data-q="What is the capital of the country where the Eiffel Tower is located?">
-        Capital of the Eiffel Tower's country<span class="tag hop">MULTI-HOP</span>
+        Capital of the Eiffel Tower's country
+      </button>
+      <button class="chip" data-q="What is the capital of the most populated country in East Asia?">
+        Capital of most populated East Asian country<span class="tag hop">MULTI-HOP</span>
       </button>
       <button class="chip" data-q="Who won the 2031 FIFA World Cup?">
         Who won the 2031 World Cup?<span class="tag abstain">ABSTAINS</span>
@@ -645,15 +649,17 @@
         <div class="card">
           <div class="card-head"><span class="label">Latency budget</span></div>
           <div class="waterfall" id="waterfall">
-            <div class="seg embed" id="seg-embed"></div>
+            <div class="seg embed"    id="seg-embed"></div>
             <div class="seg retrieve" id="seg-retrieve"></div>
-            <div class="seg rerank" id="seg-rerank"></div>
+            <div class="seg bridge"   id="seg-bridge"></div>
+            <div class="seg hop2"     id="seg-hop2"></div>
             <div class="seg generate" id="seg-generate"></div>
           </div>
           <div class="wf-legend">
             <span><i style="background:#6366f1"></i>embed</span>
             <span><i style="background:#14b8a6"></i>retrieve</span>
-            <span><i style="background:#0ea5e9"></i>rerank</span>
+            <span><i style="background:#f59e0b"></i>bridge</span>
+            <span><i style="background:#10b981"></i>hop 2</span>
             <span><i style="background:rgba(99,102,241,0.35)"></i>generate</span>
             <span class="wf-total" id="wf-total">—</span>
           </div>
@@ -895,7 +901,7 @@
      passage          {num, title, snippet, dense, bm25, rerank, hop?, low?}
      generation_start {}
      token            {text}
-     done             {mode, faith?, abstained, lat:{embed,retrieve,rerank,generate},
+     done             {mode, faith?, abstained, lat:{embed,retrieve,bridge,hop2,generate},
                        total_ms, cached?, cost?:{usd,in,out}, generation_unavailable?}
    ════════════════════════════════════════════════════════════════════ */
 
@@ -958,7 +964,7 @@ const R = {
     $("answer-meta").innerHTML = "";
     setPill("answer-pill", "working", "retrieving…");
     $("passage-count").textContent = "top-k";
-    ["embed", "retrieve", "rerank", "generate"].forEach((k) => {
+    ["embed", "retrieve", "bridge", "hop2", "generate"].forEach((k) => {
       const el = $("seg-" + k);
       el.style.width = "0%"; el.textContent = ""; el.style.display = "";
     });
@@ -1170,7 +1176,7 @@ function wireCitations() {
 function fillWaterfall(d) {
   const wf = $("waterfall");
   if (d.cached) {
-    ["embed", "retrieve", "rerank", "generate"].forEach((k) => { $("seg-" + k).style.display = "none"; });
+    ["embed", "retrieve", "bridge", "hop2", "generate"].forEach((k) => { $("seg-" + k).style.display = "none"; });
     const seg = document.createElement("div");
     seg.className = "seg cache";
     seg.style.width = "100%";
@@ -1179,18 +1185,18 @@ function fillWaterfall(d) {
     $("wf-total").textContent = "total " + (d.total_ms ?? 1) + " ms · pipeline skipped";
     return;
   }
-  const lat = d.lat || { embed: 0, retrieve: 0, rerank: 0, generate: 0 };
-  const total = lat.embed + lat.retrieve + lat.rerank + lat.generate;
+  const lat = d.lat || { embed: 0, retrieve: 0, bridge: 0, hop2: 0, generate: 0 };
+  const total = lat.embed + lat.retrieve + (lat.bridge || 0) + (lat.hop2 || 0) + lat.generate;
   if (!total) return;
   const min = 4;
-  const segs = ["embed", "retrieve", "rerank", "generate"];
+  const segs = ["embed", "retrieve", "bridge", "hop2", "generate"];
   let used = 0;
   const pcts = {};
-  segs.forEach((k) => { pcts[k] = lat[k] === 0 ? 0 : Math.max(min, (lat[k] / total) * 100); used += pcts[k]; });
+  segs.forEach((k) => { pcts[k] = (lat[k] || 0) === 0 ? 0 : Math.max(min, ((lat[k] || 0) / total) * 100); used += pcts[k]; });
   segs.forEach((k) => {
     const el = $("seg-" + k);
     el.style.width = (pcts[k] / used * 100) + "%";
-    if (lat[k] > 0) el.textContent = lat[k] + "ms";
+    if ((lat[k] || 0) > 0) el.textContent = (lat[k] || 0) + "ms";
   });
   $("wf-total").textContent = "total " + total + " ms" +
     (lat.generate === 0 ? " · LLM call skipped" : " · P95 budget 3000 ms");
@@ -1281,26 +1287,42 @@ const DEMOS = {
       { step: "rerank", label: "Rerank 20 → 4", sub: "bge-reranker-base cross-encoder", ms: 38 },
       { step: "verify", label: "Verify evidence", sub: "max rerank 0.97 ≥ abstention threshold ✓", ms: 1, reflect: true },
     ],
-    lat: { embed: 11, retrieve: 2, rerank: 38, generate: 610 },
+    lat: { embed: 11, retrieve: 2, bridge: 0, hop2: 0, generate: 610 },
   },
 
-  "what is the capital of the country where the eiffel tower is located?": {
-    faith: 94,
-    cost: { usd: 0.00074, in: 5210, out: 44 },
+  “what is the capital of the country where the eiffel tower is located?”: {
+    faith: 97,
+    cost: { usd: 0.00061, in: 4820, out: 38 },
     passages: [
-      { num: 1, title: "Eiffel Tower", snippet: "The Eiffel Tower is a wrought-iron lattice tower on the Champ de Mars in Paris, France. It is named after the engineer Gustave Eiffel, whose company designed and built the tower for the 1889 World's Fair…", dense: 0.91, bm25: 16.8, rerank: 0.98, hop: 1 },
-      { num: 2, title: "France", snippet: "France, officially the French Republic, is a country located primarily in Western Europe. Its capital and largest city is Paris, which is also the country's principal cultural and commercial centre…", dense: 0.83, bm25: 12.4, rerank: 0.95, hop: 2 },
-      { num: 3, title: "Paris", snippet: "Paris is the capital and largest city of France. With an official population of over two million residents, it has been one of Europe's major centres of finance, diplomacy, commerce, culture and science since the 17th century…", dense: 0.81, bm25: 11.6, rerank: 0.93, hop: 2 },
+      { num: 1, title: “Eiffel Tower”, snippet: “The Eiffel Tower is a wrought-iron lattice tower on the Champ de Mars in Paris, France. It is named after the engineer Gustave Eiffel, whose company designed and built the tower for the 1889 World's Fair…”, dense: 0.91, bm25: 16.8, rerank: 0.98 },
+      { num: 2, title: “France”, snippet: “France, officially the French Republic, is a country located primarily in Western Europe. Its capital and largest city is Paris, which is also the country's principal cultural and commercial centre…”, dense: 0.83, bm25: 12.4, rerank: 0.95 },
+      { num: 3, title: “Paris”, snippet: “Paris is the capital and largest city of France. With an official population of over two million residents, it has been one of Europe's major centres of finance, diplomacy, commerce, culture and science since the 17th century…”, dense: 0.81, bm25: 11.6, rerank: 0.93 },
     ],
-    answer: "The Eiffel Tower stands on the Champ de Mars in **Paris, France** [1]. The capital of France is **Paris** [2][3] — so the capital of the country where the Eiffel Tower is located is **Paris**.",
+    answer: “The Eiffel Tower is located in **Paris, France** [1]. Paris is the capital of France [2][3].”,
     steps: [
-      { step: "embed", label: "Embed query", sub: "bge-small-en-v1.5 · 384d", ms: 11 },
-      { step: "hop1", label: "Hop 1 — retrieve", sub: "best evidence: “Eiffel Tower” (rerank 0.98)", ms: 3, passagesAfter: true },
-      { step: "bridge", label: "Extract bridge entity", sub: "gpt-4o-mini → next query: “capital of France”", ms: 420, reflect: true },
-      { step: "hop2", label: "Hop 2 — retrieve", sub: "rewritten sub-query · hybrid retrieval", ms: 3 },
-      { step: "rerank", label: "Rerank 40 → 3", sub: "cross-encoder over both hops", ms: 41 },
+      { step: “embed”, label: “Embed query”, sub: “bge-small-en-v1.5 · 384d”, ms: 11 },
+      { step: “retrieve”, label: “Retrieve passages”, sub: “HNSW + bm25s, RRF → top-5”, ms: 14, passagesAfter: true },
+      { step: “verify”, label: “Verify evidence”, sub: “top passage directly answers the query — no bridge needed ✓”, ms: 1, reflect: true },
     ],
-    lat: { embed: 11, retrieve: 6, rerank: 41, generate: 980 },
+    lat: { embed: 11, retrieve: 14, bridge: 0, hop2: 0, generate: 890 },
+  },
+
+  “what is the capital of the most populated country in east asia?”: {
+    faith: 93,
+    cost: { usd: 0.00078, in: 5480, out: 47 },
+    passages: [
+      { num: 1, title: “China”, snippet: “China, officially the People's Republic of China, is a country in East Asia. With a population exceeding 1.4 billion, it is the world's most populous country…”, dense: 0.88, bm25: 14.1, rerank: 0.96, hop: 1 },
+      { num: 2, title: “Beijing”, snippet: “Beijing, alternately romanized as Peking, is the capital of China. With a population of over 21 million residents, it is one of the world's most populous cities and serves as the country's political, cultural, and educational centre…”, dense: 0.85, bm25: 13.2, rerank: 0.97, hop: 2 },
+      { num: 3, title: “Demographics of China”, snippet: “China has the world's largest population, with approximately 1.4 billion people as of 2023. The Han Chinese ethnic group constitutes about 91.1% of the total population…”, dense: 0.79, bm25: 10.4, rerank: 0.82, hop: 1 },
+    ],
+    answer: “The most populated country in East Asia is **China**, with over 1.4 billion people [1][3]. The capital of China is **Beijing** [2].”,
+    steps: [
+      { step: “embed”, label: “Embed query”, sub: “bge-small-en-v1.5 · 384d”, ms: 11 },
+      { step: “hop1”, label: “Hop 1 — retrieve”, sub: “hybrid · top-5”, ms: 14, passagesAfter: true },
+      { step: “bridge”, label: “Extract bridge entity”, sub: “gpt-4o-mini → next query: “Beijing””, ms: 813, reflect: true },
+      { step: “hop2”, label: “Hop 2 — retrieve”, sub: “query: Beijing · hybrid retrieval”, ms: 64 },
+    ],
+    lat: { embed: 11, retrieve: 14, bridge: 813, hop2: 64, generate: 1210 },
   },
 
   "who won the 2031 fifa world cup?": {
@@ -1319,7 +1341,7 @@ const DEMOS = {
       { step: "verify", label: "Verify evidence", sub: "max rerank 0.31 < threshold 0.55 ✗ — abstaining", ms: 1, reflect: true },
       { step: "generate", label: "Generate answer", sub: "skipped — abstention saves the LLM call entirely", ms: 0, skipped: true },
     ],
-    lat: { embed: 11, retrieve: 2, rerank: 39, generate: 0 },
+    lat: { embed: 11, retrieve: 2, bridge: 0, hop2: 0, generate: 0 },
   },
 };
 
@@ -1332,7 +1354,7 @@ const GENERIC = {
     { step: "rerank", label: "Rerank", sub: "waiting for the live backend", ms: 0, skipped: true },
     { step: "generate", label: "Generate", sub: "waiting for the live backend", ms: 0, skipped: true },
   ],
-  lat: { embed: 11, retrieve: 2, rerank: 0, generate: 0 },
+  lat: { embed: 11, retrieve: 2, bridge: 0, hop2: 0, generate: 0 },
 };
 
 function demoId() {
@@ -1385,7 +1407,7 @@ function runDemo(q, run) {
       faith: demo?.faith,
       abstained: !!demo?.abstain,
       lat: script.lat,
-      total_ms: script.lat ? script.lat.embed + script.lat.retrieve + script.lat.rerank + script.lat.generate : 0,
+      total_ms: script.lat ? script.lat.embed + script.lat.retrieve + (script.lat.bridge || 0) + (script.lat.hop2 || 0) + script.lat.generate : 0,
       cost: demo?.cost,
     }, 120);
   }

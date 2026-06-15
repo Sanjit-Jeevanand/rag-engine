@@ -13,6 +13,7 @@ dependencies = [
     "pydantic>=2.13.4",
     "pydantic-settings>=2.3",
     "bm25s>=0.2.12",
+    "torch>=2.0",
     "sentence-transformers>=5.5.1",
     "structlog>=24.1",
     "tqdm>=4.68.2",
@@ -40,6 +41,15 @@ dev = [
     "reportlab>=4.5.1",
     "ruff>=0.4",
 ]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }
 
 [build-system]
 requires = ["hatchling"]

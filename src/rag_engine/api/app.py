@@ -139,7 +139,9 @@ def _get_cache() -> SemanticCache:
     return cast(SemanticCache, _state["cache"])
 
 
-def _retrieve_sync(query: str, top_k: int) -> list[models.Citation]:
+def _retrieve_sync(
+    query: str, top_k: int, qvec: np.ndarray | None = None
+) -> list[models.Citation]:
     hnsw = _state.get("hnsw")
     if hnsw is None:
         return []
@@ -155,10 +157,14 @@ def _retrieve_sync(query: str, top_k: int) -> list[models.Citation]:
     cosine_sim: dict[str, float] = {}
 
     def _dense() -> list[str]:
-        qvec = embedder.encode(
-            [query], normalize_embeddings=True, convert_to_numpy=True
-        ).astype(np.float32)
-        distances, indices = hnsw.search(qvec, _DENSE_K)
+        vec = (
+            qvec.reshape(1, -1)
+            if qvec is not None
+            else embedder.encode(
+                [query], normalize_embeddings=True, convert_to_numpy=True
+            ).astype(np.float32)
+        )
+        distances, indices = hnsw.search(vec, _DENSE_K)
         seen: set[str] = set()
         ids: list[str] = []
         for dist, raw_idx in zip(distances[0], indices[0], strict=False):
@@ -179,7 +185,6 @@ def _retrieve_sync(query: str, top_k: int) -> list[models.Citation]:
         sparse_fut = pool.submit(_sparse)
         dense_ids = dense_fut.result()
         sparse_ids = sparse_fut.result()
-
     _RRF_K = 60
     _RRF_MAX = 1.0 / (_RRF_K + 1)
     sparse_rrf = {doc: 1.0 / (_RRF_K + rank + 1) for rank, doc in enumerate(sparse_ids)}
@@ -200,8 +205,10 @@ def _retrieve_sync(query: str, top_k: int) -> list[models.Citation]:
     ]
 
 
-async def _retrieve(query: str, top_k: int) -> list[models.Citation]:
-    return await asyncio.to_thread(_retrieve_sync, query, top_k)
+async def _retrieve(
+    query: str, top_k: int, qvec: np.ndarray | None = None
+) -> list[models.Citation]:
+    return await asyncio.to_thread(_retrieve_sync, query, top_k, qvec)
 
 
 def _rerank_sync(
@@ -292,7 +299,7 @@ async def _sse_generator(
 
     # 1. semantic cache check (embedding happens inside cache.get)
     t_embed = time.monotonic()
-    cached = await cache.get(query)
+    cached, q_vec = await cache.get(query)
     embed_ms = int((time.monotonic() - t_embed) * 1000)
 
     if cached is not None:
@@ -318,10 +325,12 @@ async def _sse_generator(
     # 2. retrieval with timeout
     passages: list[models.Citation] = []
     timed_out_retrieval = False
+    bridge_ms = 0
+    hop2_ms = 0
     t_retrieve = time.monotonic()
     try:
         passages = await asyncio.wait_for(
-            _retrieve(query, top_k), timeout=_RETRIEVAL_TIMEOUT
+            _retrieve(query, top_k, q_vec), timeout=_RETRIEVAL_TIMEOUT
         )
     except TimeoutError:
         timed_out_retrieval = True
@@ -435,7 +444,14 @@ async def _sse_generator(
 
     gen_ms = int((time.monotonic() - t_gen) * 1000)
     total_ms = int((time.monotonic() - t0) * 1000)
-    lat = {"embed": embed_ms, "retrieve": retrieve_ms, "rerank": 0, "generate": gen_ms}
+    lat = {
+        "embed": embed_ms,
+        "retrieve": retrieve_ms,
+        "bridge": bridge_ms,
+        "hop2": hop2_ms,
+        "rerank": 0,
+        "generate": gen_ms,
+    }
     STAGE_LATENCY.labels(stage="generate").observe(gen_ms / 1000)
     if timed_out_llm:
         QUERY_ERRORS.labels(tenant=tenant_id, stage="generate").inc()
@@ -467,7 +483,7 @@ async def _sse_generator(
             citations=passages,
             tenant_id=tenant_id,
         )
-        await cache.set(query, result)
+        await cache.set(query, result, q_vec)
         yield ev.done_event(query_id, mode="grounded", lat=lat, total_ms=total_ms)
 
     await redis.set(f"result:{query_id}", result.model_dump_json(), ex=3600)
