@@ -152,6 +152,9 @@ def _retrieve_sync(query: str, top_k: int) -> list[models.Citation]:
 
     _CANDIDATE = 100
     _RERANK = 10
+    # FAISS HNSW sets ef = max(efSearch, k). Previously k=1000 → ef=1000 (slow).
+    # 192 → ef=192; ~23 chunks/article gives 8-20 unique articles; BM25 covers the rest.
+    _DENSE_K = 192
 
     cosine_sim: dict[str, float] = {}
 
@@ -159,7 +162,7 @@ def _retrieve_sync(query: str, top_k: int) -> list[models.Citation]:
         qvec = embedder.encode(
             [query], normalize_embeddings=True, convert_to_numpy=True
         ).astype(np.float32)
-        distances, indices = hnsw.search(qvec, _CANDIDATE * 10)
+        distances, indices = hnsw.search(qvec, _DENSE_K)
         seen: set[str] = set()
         ids: list[str] = []
         for dist, raw_idx in zip(distances[0], indices[0], strict=False):
