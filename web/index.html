@@ -1185,18 +1185,28 @@ function fillWaterfall(d) {
     $("wf-total").textContent = "total " + (d.total_ms ?? 1) + " ms · pipeline skipped";
     return;
   }
-  const lat = d.lat || { embed: 0, retrieve: 0, bridge: 0, hop2: 0, generate: 0 };
-  const total = lat.embed + lat.retrieve + (lat.bridge || 0) + (lat.hop2 || 0) + lat.generate;
+  const rawLat = d.lat || { embed: 0, retrieve: 0, bridge: 0, hop2: 0, generate: 0 };
+  // Only show bridge/hop2 segments when a full multi-hop occurred (hop2 > 0).
+  // If bridge ran but hop2 didn't, fold bridge time into generate.
+  const isMultiHop = (rawLat.hop2 || 0) > 0;
+  const lat = {
+    embed:    rawLat.embed    || 0,
+    retrieve: rawLat.retrieve || 0,
+    bridge:   isMultiHop ? (rawLat.bridge || 0) : 0,
+    hop2:     isMultiHop ? (rawLat.hop2   || 0) : 0,
+    generate: (rawLat.generate || 0) + (isMultiHop ? 0 : (rawLat.bridge || 0)),
+  };
+  const total = lat.embed + lat.retrieve + lat.bridge + lat.hop2 + lat.generate;
   if (!total) return;
   const min = 4;
   const segs = ["embed", "retrieve", "bridge", "hop2", "generate"];
   let used = 0;
   const pcts = {};
-  segs.forEach((k) => { pcts[k] = (lat[k] || 0) === 0 ? 0 : Math.max(min, ((lat[k] || 0) / total) * 100); used += pcts[k]; });
+  segs.forEach((k) => { pcts[k] = lat[k] === 0 ? 0 : Math.max(min, (lat[k] / total) * 100); used += pcts[k]; });
   segs.forEach((k) => {
     const el = $("seg-" + k);
     el.style.width = (pcts[k] / used * 100) + "%";
-    if ((lat[k] || 0) > 0) el.textContent = (lat[k] || 0) + "ms";
+    el.textContent = lat[k] > 0 ? lat[k] + "ms" : "";
   });
   $("wf-total").textContent = "total " + total + " ms" +
     (lat.generate === 0 ? " · LLM call skipped" : " · P95 budget 3000 ms");
