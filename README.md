@@ -1,5 +1,16 @@
 # RAG Engine
 
+**[Live demo →](http://167.233.55.52:8000/ui)**  Use one of these tokens (20 queries / week each):
+```
+sk-64acf6f0f5edc181526de7242485924b9fc7418f4828a64b
+sk-b66498df35b6eee413c3fb050b77202e5e3983e85bcbbcd5
+sk-ae76de15a76368f2888ac60aaa5d1bdd7edfbf17fce900cb
+sk-69906cd532967e2fc6583397dac79a6bfbe338cc731999d6
+sk-58855df294b8cd78e4e88df3ad7af29da2e1a0739b84d73e
+```
+
+---
+
 **Hybrid HNSW + BM25 retrieval, cross-encoder reranking, and a hand-rolled multi-hop agent that cites its sources — or refuses to answer.**
 
 Built from scratch across 10 phases: corpus ingestion → eval harness → FAISS benchmarking → throughput engineering → hybrid retrieval → agentic reasoning → full benchmark run → production serving → observability → containerised deploy on a €7.49/mo Hetzner server.

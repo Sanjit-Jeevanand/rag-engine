@@ -28,8 +28,10 @@ def _make_redis(*, ping_ok: bool = True) -> AsyncMock:
 
 
 def _make_cache(*, hit: QueryResult | None = None) -> AsyncMock:
+    import numpy as np
+
     c = AsyncMock()
-    c.get = AsyncMock(return_value=hit)
+    c.get = AsyncMock(return_value=(hit, np.zeros(384, dtype=np.float32)))
     c.set = AsyncMock()
     c.hit_rate = AsyncMock(return_value=0.25)
     return c
