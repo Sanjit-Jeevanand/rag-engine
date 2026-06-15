@@ -148,10 +148,8 @@ def _retrieve_sync(query: str, top_k: int) -> list[models.Citation]:
     first_chunk_offsets: dict[int, str] = _state["first_chunk_offsets"]
     title_to_text: dict[str, str] = _state["title_to_text"]
     bm25: BM25Retriever = _state["bm25"]
-    reranker: CrossEncoderReranker = _state["reranker"]
 
     _CANDIDATE = 100
-    _RERANK = 10
     _DENSE_K = 64
 
     cosine_sim: dict[str, float] = {}
@@ -186,20 +184,19 @@ def _retrieve_sync(query: str, top_k: int) -> list[models.Citation]:
     _RRF_MAX = 1.0 / (_RRF_K + 1)
     sparse_rrf = {doc: 1.0 / (_RRF_K + rank + 1) for rank, doc in enumerate(sparse_ids)}
 
-    fused = reciprocal_rank_fusion([dense_ids, sparse_ids], k=_RERANK)
-    scores = reranker.scores(query, fused, title_to_text)
-    ranked = np.argsort(scores)[::-1][:top_k]
+    fused = reciprocal_rank_fusion([dense_ids, sparse_ids], k=top_k)
+    rrf_scores = [1.0 / (_RRF_K + rank + 1) for rank, _ in enumerate(fused)]
 
     return [
         models.Citation(
             passage_id=str(i + 1),
-            title=fused[int(idx)],
-            text=title_to_text.get(fused[int(idx)], "")[:800],
-            score=float(scores[int(idx)]),
-            dense_score=cosine_sim.get(fused[int(idx)], 0.0),
-            bm25_score=sparse_rrf.get(fused[int(idx)], 0.0) / _RRF_MAX,
+            title=title,
+            text=title_to_text.get(title, "")[:800],
+            score=rrf_scores[i],
+            dense_score=cosine_sim.get(title, 0.0),
+            bm25_score=sparse_rrf.get(title, 0.0) / _RRF_MAX,
         )
-        for i, idx in enumerate(ranked)
+        for i, title in enumerate(fused)
     ]
 
 
