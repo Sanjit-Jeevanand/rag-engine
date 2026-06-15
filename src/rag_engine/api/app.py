@@ -16,6 +16,7 @@ import structlog
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from redis.asyncio import Redis
 from starlette.responses import StreamingResponse
@@ -120,6 +121,10 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["Authorization", "Content-Type"],
 )
+
+_web = Path(__file__).parent.parent.parent.parent / "web"
+if _web.exists():
+    app.mount("/", StaticFiles(directory=_web, html=True), name="static")
 
 
 def _get_redis() -> Redis:
