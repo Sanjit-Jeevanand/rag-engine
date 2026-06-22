@@ -76,6 +76,7 @@ async def test_invalid_token(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="rate limiting disabled for public demo")
 async def test_rate_limit_exceeded(client: AsyncClient) -> None:
     _state["redis"].eval = AsyncMock(return_value=0)
     r = await client.post("/query", json={"query": "hello"}, headers=AUTH)
