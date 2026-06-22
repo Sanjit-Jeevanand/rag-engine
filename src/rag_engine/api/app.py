@@ -502,6 +502,13 @@ async def _sse_generator(
     )
 
 
+@app.get("/")
+async def root() -> Response:
+    from fastapi.responses import RedirectResponse
+
+    return RedirectResponse(url="/ui", status_code=302)
+
+
 @app.post("/query")
 async def post_query(request: Request, body: models.QueryRequest) -> Response:
     tenant_id: str = getattr(request.state, "tenant_id", "unknown")

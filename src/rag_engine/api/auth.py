@@ -45,7 +45,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
         path = request.url.path
-        if path in {"/health", "/ready"} or path.startswith("/ui"):
+        if path in {"/health", "/ready", "/"} or path.startswith("/ui"):
             return await call_next(request)
 
         header = request.headers.get("Authorization", "")
