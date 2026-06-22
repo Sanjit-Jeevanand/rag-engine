@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>RAG Engine — ask a million Wikipedia articles</title>
-<meta name="description" content="Hybrid HNSW + BM25 retrieval, cross-encoder reranking, and a hand-rolled multi-hop agent that cites its sources — or refuses to answer.">
+<title>RAG Engine &mdash; ask a million Wikipedia articles</title>
+<meta name="description" content="Hybrid HNSW + BM25 retrieval, cross-encoder reranking, and a hand-rolled multi-hop agent that cites its sources &mdash; or refuses to answer.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%236366f1'/%3E%3Cstop offset='1' stop-color='%2322d3ee'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='16' cy='16' r='13' fill='url(%23g)'/%3E%3Ccircle cx='16' cy='16' r='5.5' fill='%2307090e'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -562,7 +562,7 @@
       <span>Wikipedia · agentic retrieval</span>
     </a>
     <div class="hspace"></div>
-    <button class="mode-badge" id="mode-badge" title="Connection mode — click to configure">
+    <button class="mode-badge" id="mode-badge" title="Connection mode &mdash; click to configure">
       <i></i><span id="mode-text">CHECKING…</span>
     </button>
     <button class="icon-btn" id="settings-btn" title="API settings" aria-label="API settings">
@@ -575,11 +575,11 @@
 </header>
 
 <div class="settings" id="settings">
-  <h4>Backend authentication</h4>
-  <label for="cfg-token">Bearer token</label>
-  <input id="cfg-token" type="password" placeholder="API_TOKEN" spellcheck="false">
+  <h4>Backend settings</h4>
+  <label for="cfg-token" style="opacity:0.45">Bearer token <span style="font-weight:400;font-size:11px">(pre-configured)</span></label>
+  <input id="cfg-token" type="password" placeholder="API_TOKEN" spellcheck="false" disabled style="opacity:0.35;cursor:not-allowed">
   <div class="row">
-    <button class="save" id="cfg-save">Save &amp; reconnect</button>
+    <button class="save" id="cfg-save">Reconnect</button>
   </div>
   <div class="probe-status" id="probe-status"></div>
 </div>
@@ -592,7 +592,7 @@
     <h1>Ask Wikipedia.<br>Get a <span class="grad">cited</span> answer.</h1>
     <p class="sub">
       Hybrid HNSW + BM25 retrieval, cross-encoder reranking, and a hand-rolled multi-hop
-      agent that extracts bridge entities, checks its own work — and refuses to answer
+      agent that extracts bridge entities, checks its own work &mdash; and refuses to answer
       when the evidence isn't there.
     </p>
 
@@ -615,7 +615,7 @@
       </button>
     </div>
     <div class="cache-hint" id="cache-hint">
-      Tip: ask the <b>same question again</b> — the semantic cache answers in ~1 ms without touching the pipeline.
+      Tip: ask the <b>same question again</b> &mdash; the semantic cache answers in ~1 ms without touching the pipeline.
     </div>
 
     <div class="stats-strip" data-rv>
@@ -661,13 +661,13 @@
             <span><i style="background:#f59e0b"></i>bridge</span>
             <span><i style="background:#10b981"></i>hop 2</span>
             <span><i style="background:rgba(99,102,241,0.35)"></i>generate</span>
-            <span class="wf-total" id="wf-total">—</span>
+            <span class="wf-total" id="wf-total">&mdash;</span>
           </div>
         </div>
 
         <div class="card">
           <div class="card-head">
-            <span class="label">Wire protocol — SSE</span>
+            <span class="label">Wire protocol &mdash; SSE</span>
             <span class="pill working" id="wire-mode">demo</span>
           </div>
           <div class="wirelog" id="wirelog">
@@ -693,7 +693,7 @@
     <div class="sec-head" data-rv>
       <div class="kicker">Under the hood</div>
       <h2>One query, seven stages, no black boxes</h2>
-      <p>No frameworks in the hot path — the loop, the fusion, the abstention logic are all explicit code.</p>
+      <p>No frameworks in the hot path &mdash; the loop, the fusion, the abstention logic are all explicit code.</p>
     </div>
 
     <div class="pipe-card" data-rv>
@@ -730,12 +730,12 @@
         </g>
         <g class="pnode hot">
           <rect x="276" y="58" width="136" height="52" rx="11"/>
-          <text x="344" y="81" text-anchor="middle">Dense — HNSW</text>
+          <text x="344" y="81" text-anchor="middle">Dense &mdash; HNSW</text>
           <text class="psub" x="344" y="98" text-anchor="middle">faiss · ef=64 · 0.39ms</text>
         </g>
         <g class="pnode hot">
           <rect x="276" y="216" width="136" height="52" rx="11"/>
-          <text x="344" y="239" text-anchor="middle">Sparse — BM25</text>
+          <text x="344" y="239" text-anchor="middle">Sparse &mdash; BM25</text>
           <text class="psub" x="344" y="256" text-anchor="middle">bm25s · lexical match</text>
         </g>
         <g class="pnode">
@@ -853,12 +853,12 @@
       </table>
       <div class="beir-foot">
         <b>pipeline:</b> bge-small-en-v1.5 dense + bm25s → reciprocal rank fusion → bge-reranker-base cross-encoder · scored with pytrec_eval ·
-        SciFact beats the BM25 baseline (0.665); ArguAna's counter-argument structure is a known dense-retrieval failure mode — reported, not hidden.
+        SciFact beats the BM25 baseline (0.665); ArguAna's counter-argument structure is a known dense-retrieval failure mode &mdash; reported, not hidden.
       </div>
     </div>
 
     <div class="safety-strip">
-      <div class="s" data-rv><span class="dot"></span><div><b class="num">0 / 100</b><span>fabricated citations — every cited ID verified against the retrieved set</span></div></div>
+      <div class="s" data-rv><span class="dot"></span><div><b class="num">0 / 100</b><span>fabricated citations &mdash; every cited ID verified against the retrieved set</span></div></div>
       <div class="s" data-rv><span class="dot amber"></span><div><b class="num">4 / 5</b><span>out-of-corpus questions correctly refused instead of guessed</span></div></div>
       <div class="s" data-rv><span class="dot cyan"></span><div><b class="num">12 / 100</b><span>answers self-corrected by the reflection pass before being returned</span></div></div>
     </div>
@@ -874,7 +874,7 @@
 
 <footer>
   <div>
-    <b style="color:var(--mut)">Demo mode</b> replays recorded pipeline runs entirely in the browser — no backend required.
+    <b style="color:var(--mut)">Demo mode</b> replays recorded pipeline runs entirely in the browser &mdash; no backend required.
     <b style="color:var(--mut)">Live mode</b> streams real server-sent events from the FastAPI backend.
   </div>
   <div class="phases">ingest → eval harness → HNSW → throughput → hybrid → agent → benchmarks → serving</div>
@@ -909,10 +909,11 @@
 
 /* ── config ─────────────────────────────────────────────────────────── */
 
+const DEMO_TOKEN = "sk-64acf6f0f5edc181526de7242485924b9fc7418f4828a64b";
 const CFG = {
   get apiBase() { return "http://167.233.55.52:8000"; },
-  get token() { return localStorage.getItem("rag.token") || ""; },
-  set token(v) { localStorage.setItem("rag.token", v); },
+  get token() { return DEMO_TOKEN; },
+  set token(_) {},  // no-op — token is fixed for demo
 };
 
 const $ = (id) => document.getElementById(id);

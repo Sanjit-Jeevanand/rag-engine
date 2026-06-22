@@ -67,6 +67,8 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.ruff.lint.per-file-ignores]
 "scripts/gen_phase8_pdf.py" = ["E501"]
+"scripts/gen_reproduction_guide.py" = ["E501"]
+"scripts/gen_api_keys.py" = ["E501"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["rag_engine"]

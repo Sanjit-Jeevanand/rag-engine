@@ -21,7 +21,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from redis.asyncio import Redis
 from starlette.responses import StreamingResponse
 
-from rag_engine.api import auth, models, ratelimit
+from rag_engine.api import auth, models
 from rag_engine.api import stream as ev
 from rag_engine.api.auth import AuthMiddleware
 from rag_engine.api.cache import SemanticCache
@@ -507,13 +507,14 @@ async def post_query(request: Request, body: models.QueryRequest) -> Response:
     tenant_id: str = getattr(request.state, "tenant_id", "unknown")
     redis = _get_redis()
 
-    allowed = await ratelimit.check(redis, tenant_id)
-    if not allowed:
-        return JSONResponse(
-            status_code=429,
-            content={"detail": "Rate limit exceeded"},
-            headers={"Retry-After": "60"},
-        )
+    # Rate limiting disabled for public demo.
+    # allowed = await ratelimit.check(redis, tenant_id)
+    # if not allowed:
+    #     return JSONResponse(
+    #         status_code=429,
+    #         content={"detail": "Rate limit exceeded"},
+    #         headers={"Retry-After": "60"},
+    #     )
 
     cache = _get_cache()
     return StreamingResponse(
