@@ -27,7 +27,7 @@ def _get_async_client() -> AsyncOpenAI:
 def complete(
     messages: list[dict[str, str]],
     *,
-    model: str = "gpt-4o-mini",
+    model: str = "gpt-5-mini",
     max_tokens: int = 512,
     system: str = "",
 ) -> str:
@@ -51,7 +51,7 @@ def complete(
 async def stream_complete(
     messages: list[dict[str, str]],
     *,
-    model: str = "gpt-4o-mini",
+    model: str = "gpt-5-mini",
     max_tokens: int = 512,
     system: str = "",
 ) -> AsyncIterator[str]:

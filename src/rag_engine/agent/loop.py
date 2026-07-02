@@ -58,7 +58,7 @@ class MultiHopAgent:
         doc_texts: dict[str, str],
         reranker: CrossEncoderReranker,
         *,
-        model: str = "gpt-4o-mini",
+        model: str = "gpt-5-mini",
         top_k: int = 5,
         max_hops: int = 3,
         abstention_threshold: float = -4.0,

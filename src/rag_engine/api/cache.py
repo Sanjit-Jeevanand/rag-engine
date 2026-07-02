@@ -56,6 +56,10 @@ class SemanticCache:
                 await self._redis.incr(_HIT_KEY)
                 logger.info("semantic_cache_hit", sim=round(best_sim, 4))
                 return QueryResult.model_validate(json.loads(raw)), q_vec
+            # embedding survived but its result expired/never wrote — stale pointer
+            # would otherwise permanently mask this query from future cache hits
+            await self._redis.hdel(_EMBED_KEY, best_key)
+            logger.warning("semantic_cache_stale_entry_purged", key=best_key)
 
         logger.info("semantic_cache_miss")
         return None, q_vec
@@ -66,12 +70,15 @@ class SemanticCache:
         if q_vec is None:
             q_vec = self._embed(query)
         cache_key = result.query_id
-        await self._redis.hset(_EMBED_KEY, cache_key, pickle.dumps(q_vec))
+        # write the result before the embedding pointer: if the client disconnects
+        # mid-write, an orphaned result key is harmless, but an orphaned embedding
+        # pointer would poison lookups for this query permanently
         await self._redis.set(
             f"cache:result:{cache_key}",
             result.model_dump_json(),
             ex=_TTL_SECONDS,
         )
+        await self._redis.hset(_EMBED_KEY, cache_key, pickle.dumps(q_vec))
 
     async def hit_rate(self) -> float:
         hits = int(await self._redis.get(_HIT_KEY) or 0)
